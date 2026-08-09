@@ -85,72 +85,44 @@ async function swapImage(zip, slideNum, oldRId, newImageBytes, ext) {
   zip.file(relsPath, relsXml);
 }
 
-// --- Slide 5: facility "Include" list (8-run layout, unchanged) ---
-async function editSlide5FacilityList(zip, items) {
+// --- Slide 5: dynamic list rebuild (Include / Meals / Fasilitas) ---
+// Supports ANY number of items (not limited to the original template's slot count).
+const LIST_RUN_STYLE = `sz="900" b="1" dirty="0"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Calibri"/><a:cs typeface="Calibri"/><a:sym typeface="Calibri"/>`;
+
+function rebuildListParagraph(spXml, items) {
+  const paragraphs = spXml.split('</a:p>');
+  if (!paragraphs[1]) return spXml;
+
+  // keep the original <a:pPr>, discard the old runs/breaks
+  const pPrMatch = paragraphs[1].match(/<a:pPr[\s\S]*?<\/a:pPr>/);
+  const pPr = pPrMatch ? pPrMatch[0] : '';
+
+  const runs = items.map(text =>
+    `<a:r><a:rPr lang="en" ${LIST_RUN_STYLE}</a:rPr><a:t>${escapeXml(text)}</a:t></a:r>`
+  );
+  const br = `<a:br><a:rPr lang="en" ${LIST_RUN_STYLE}</a:rPr></a:br>`;
+  const body = runs.join(br);
+  const endParaRPr = `<a:endParaRPr ${LIST_RUN_STYLE}</a:endParaRPr>`;
+
+  paragraphs[1] = `<a:p>${pPr}${body}${endParaRPr}`;
+  return paragraphs.join('</a:p>');
+}
+
+async function editSlide5List(zip, shapeId, items) {
   const path = 'ppt/slides/slide5.xml';
   let xml = await zip.file(path).async('string');
-
-  const spRegex = /(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<p:cNvPr id="1240"[\s\S]*?<\/p:sp>)/;
+  const spRegex = new RegExp(`(<p:sp>(?:(?!<\\/p:sp>)[\\s\\S])*?<p:cNvPr id="${shapeId}"[\\s\\S]*?<\\/p:sp>)`);
   const match = xml.match(spRegex);
   if (!match) { zip.file(path, xml); return; }
-  let spXml = match[1];
-
-  const runTexts = [
-    items[0] || '', items[1] || '',
-    items[2] || '', '', '',
-    items[3] || '', items[4] || '', items[5] || '',
-  ];
-  let i = 0;
-  const paragraphs = spXml.split('</a:p>');
-  if (paragraphs[1]) {
-    let para = paragraphs[1];
-    para = para.replace(/<a:t>[\s\S]*?<\/a:t>/g, () => `<a:t>${escapeXml(runTexts[i++] ?? '')}</a:t>`);
-    paragraphs[1] = para;
-  }
-  xml = xml.replace(spXml, paragraphs.join('</a:p>'));
+  const spXml = match[1];
+  const newSpXml = rebuildListParagraph(spXml, items.filter(Boolean));
+  xml = xml.replace(spXml, newSpXml);
   zip.file(path, xml);
 }
 
-// --- Slide 5: Meals list (shape 1241, 3-run layout: "1x Lunch" / "1x " / "Coffe Break") ---
-async function editSlide5Meals(zip, items) {
-  const path = 'ppt/slides/slide5.xml';
-  let xml = await zip.file(path).async('string');
-  const spRegex = /(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<p:cNvPr id="1241"[\s\S]*?<\/p:sp>)/;
-  const match = xml.match(spRegex);
-  if (!match) { zip.file(path, xml); return; }
-  let spXml = match[1];
-  // 3 runs collapse to 2 logical lines: [item0], [item1, '']
-  const runTexts = [items[0] || '', items[1] || '', ''];
-  let i = 0;
-  const paragraphs = spXml.split('</a:p>');
-  if (paragraphs[1]) {
-    let para = paragraphs[1];
-    para = para.replace(/<a:t>[\s\S]*?<\/a:t>/g, () => `<a:t>${escapeXml(runTexts[i++] ?? '')}</a:t>`);
-    paragraphs[1] = para;
-  }
-  xml = xml.replace(spXml, paragraphs.join('</a:p>'));
-  zip.file(path, xml);
-}
-
-// --- Slide 5: Fasilitas list (shape 1242, 5 clean runs) ---
-async function editSlide5Fasilitas(zip, items) {
-  const path = 'ppt/slides/slide5.xml';
-  let xml = await zip.file(path).async('string');
-  const spRegex = /(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<p:cNvPr id="1242"[\s\S]*?<\/p:sp>)/;
-  const match = xml.match(spRegex);
-  if (!match) { zip.file(path, xml); return; }
-  let spXml = match[1];
-  const runTexts = [items[0] || '', items[1] || '', items[2] || '', items[3] || '', items[4] || ''];
-  let i = 0;
-  const paragraphs = spXml.split('</a:p>');
-  if (paragraphs[1]) {
-    let para = paragraphs[1];
-    para = para.replace(/<a:t>[\s\S]*?<\/a:t>/g, () => `<a:t>${escapeXml(runTexts[i++] ?? '')}</a:t>`);
-    paragraphs[1] = para;
-  }
-  xml = xml.replace(spXml, paragraphs.join('</a:p>'));
-  zip.file(path, xml);
-}
+async function editSlide5FacilityList(zip, items) { return editSlide5List(zip, 1240, items); }
+async function editSlide5Meals(zip, items) { return editSlide5List(zip, 1241, items); }
+async function editSlide5Fasilitas(zip, items) { return editSlide5List(zip, 1242, items); }
 
 async function editSlide5Photos(zip, photos) {
   // photos: array of up to 4 {bytes, ext}
@@ -241,9 +213,9 @@ async function editSlide7(zip, leftRows, rightRows) {
   let xml = await zip.file(path).async('string');
   xml = removeShapeByPos(xml, 164443, 783454);
   xml = removeShapeByPos(xml, 4421524, 656913);
-  const leftTbl = buildRundownTable(9003, 164443, 783454, 4501662, leftRows, 1000, true);
+  const leftTbl = buildRundownTable(9003, 164443, 783454, 4501662, leftRows, 1200, true);
   // small left padding on the time cell so it doesn't sit right at the column divider
-  const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, 1000, true, 120000);
+  const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, 1200, true, 120000);
   xml = xml.replace('</p:spTree>', leftTbl + rightTbl + '</p:spTree>');
   zip.file(path, xml);
 }
