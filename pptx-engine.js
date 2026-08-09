@@ -86,23 +86,28 @@ async function swapImage(zip, slideNum, oldRId, newImageBytes, ext) {
 }
 
 // --- Slide 5: dynamic list rebuild (Include / Meals / Fasilitas) ---
-// Supports ANY number of items (not limited to the original template's slot count).
-const LIST_RUN_STYLE = `sz="900" b="1" dirty="0"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Calibri"/><a:cs typeface="Calibri"/><a:sym typeface="Calibri"/>`;
+// Supports ANY number of items (not limited to the original template's slot count),
+// and auto-fits the font size to the item count so the box height (2699400 EMU) is well used.
+const SLIDE5_LIST_HEIGHT = 2699400;
+
+function buildListRunStyle(sz) {
+  return `sz="${sz}" b="1" dirty="0"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Calibri"/><a:cs typeface="Calibri"/><a:sym typeface="Calibri"/>`;
+}
 
 function rebuildListParagraph(spXml, items) {
   const paragraphs = spXml.split('</a:p>');
   if (!paragraphs[1]) return spXml;
 
-  // keep the original <a:pPr>, discard the old runs/breaks
   const pPrMatch = paragraphs[1].match(/<a:pPr[\s\S]*?<\/a:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : '';
 
-  const runs = items.map(text =>
-    `<a:r><a:rPr lang="en" ${LIST_RUN_STYLE}</a:rPr><a:t>${escapeXml(text)}</a:t></a:r>`
-  );
-  const br = `<a:br><a:rPr lang="en" ${LIST_RUN_STYLE}</a:rPr></a:br>`;
+  const sz = computeAutoFontSize(items.length, 1, SLIDE5_LIST_HEIGHT, 8, 15, 0);
+  const style = buildListRunStyle(sz);
+
+  const runs = items.map(text => `<a:r><a:rPr lang="en" ${style}</a:rPr><a:t>${escapeXml(text)}</a:t></a:r>`);
+  const br = `<a:br><a:rPr lang="en" ${style}</a:rPr></a:br>`;
   const body = runs.join(br);
-  const endParaRPr = `<a:endParaRPr ${LIST_RUN_STYLE}</a:endParaRPr>`;
+  const endParaRPr = `<a:endParaRPr ${style}</a:endParaRPr>`;
 
   paragraphs[1] = `<a:p>${pPr}${body}${endParaRPr}`;
   return paragraphs.join('</a:p>');
@@ -132,10 +137,22 @@ async function editSlide5Photos(zip, photos) {
   }
 }
 
-// --- Slide 6 & 7: rebuild the two rundown columns as native OOXML tables ---
 const RUNDOWN_COLOR = 'AB8645';
 const TIME_COL_W = 1150000;
 const INDENT_STEP = 180000;
+const SLIDE6_AVAILABLE_HEIGHT = 3645265;   // y=1128323 down to the footer bar
+const SLIDE7_LEFT_AVAILABLE_HEIGHT = 3990134;
+const SLIDE7_RIGHT_AVAILABLE_HEIGHT = 4116675;
+
+// --- Auto-fit: computes a font size (in OOXML hundredths-of-a-point units) so that
+// the content fills the available box height, instead of using a fixed size. ---
+function computeAutoFontSize(totalLines, rowCount, availableHeightEMU, minPt, maxPt, rowOverheadPt) {
+  const heightPt = availableHeightEMU / 12700; // 12700 EMU = 1pt
+  const usablePt = Math.max(heightPt - rowCount * (rowOverheadPt || 0), 20);
+  let sizePt = usablePt / (Math.max(totalLines, 1) * 1.3);
+  sizePt = Math.max(minPt, Math.min(maxPt, sizePt));
+  return Math.round(sizePt * 100);
+}
 
 function parseRundownLine(raw) {
   let level = 0, line = raw;
@@ -173,15 +190,19 @@ function buildTimeCell(timeText, sz, extraMarL) {
   return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p>${buildRun(timeText, sz, false)}</a:p></a:txBody>${buildTcPr(extraMarL)}</a:tc>`;
 }
 
-function buildRundownTable(shapeId, x, y, width, rows, sz, nested, timeMarL) {
-  const totalHeight = rows.length * 300000;
+// availableHeightEMU: fixed box height to fill. sizeBounds: {min,max} in points.
+function buildRundownTable(shapeId, x, y, width, rows, availableHeightEMU, sizeBounds, nested, timeMarL) {
+  const totalLines = rows.reduce((sum, r) => sum + r.label.split('\n').map(l => l.trim()).filter(Boolean).length, 0);
+  const sz = computeAutoFontSize(totalLines, rows.length, availableHeightEMU, sizeBounds.min, sizeBounds.max, 15);
+
+  const rowH = Math.floor(availableHeightEMU / Math.max(rows.length, 1));
   const trs = rows.map(row => {
     const timeText = row.time2 ? `${row.time1}-${row.time2}` : row.time1;
     const lines = row.label.split('\n').map(l => l.trim()).filter(Boolean);
-    return `<a:tr h="300000">${buildTimeCell(timeText, sz, timeMarL)}${buildDescCell(lines, sz, nested)}</a:tr>`;
+    return `<a:tr h="${rowH}">${buildTimeCell(timeText, sz, timeMarL)}${buildDescCell(lines, sz, nested)}</a:tr>`;
   }).join('');
 
-  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${shapeId}" name="Table ${shapeId}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${totalHeight}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="0" bandRow="0"/><a:tblGrid><a:gridCol w="${TIME_COL_W}"/><a:gridCol w="${width - TIME_COL_W}"/></a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${shapeId}" name="Table ${shapeId}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${availableHeightEMU}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="0" bandRow="0"/><a:tblGrid><a:gridCol w="${TIME_COL_W}"/><a:gridCol w="${width - TIME_COL_W}"/></a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
 }
 
 function removeShapeByPos(xml, offX, offY) {
@@ -200,10 +221,11 @@ async function editSlide6(zip, leftRows, rightRows) {
   let xml = await zip.file(path).async('string');
   xml = removeShapeByPos(xml, 63190, 1128323);
   xml = removeShapeByPos(xml, 4686290, 1128323);
-  const leftTbl = buildRundownTable(9001, 63190, 1128323, 4544665, leftRows, 1200, false);
+  const bounds = { min: 10, max: 18 };
+  const leftTbl = buildRundownTable(9001, 63190, 1128323, 4544665, leftRows, SLIDE6_AVAILABLE_HEIGHT, bounds, false);
   // Right table's original width (4544665) pushes its right edge past the slide
-  // boundary (9144000 EMU) — narrowed here so long text wraps instead of overflowing.
-  const rightTbl = buildRundownTable(9002, 4686290, 1128323, 4350000, rightRows, 1200, false);
+  // boundary — narrowed here so long text wraps instead of overflowing.
+  const rightTbl = buildRundownTable(9002, 4686290, 1128323, 4350000, rightRows, SLIDE6_AVAILABLE_HEIGHT, bounds, false);
   xml = xml.replace('</p:spTree>', leftTbl + rightTbl + '</p:spTree>');
   zip.file(path, xml);
 }
@@ -213,9 +235,10 @@ async function editSlide7(zip, leftRows, rightRows) {
   let xml = await zip.file(path).async('string');
   xml = removeShapeByPos(xml, 164443, 783454);
   xml = removeShapeByPos(xml, 4421524, 656913);
-  const leftTbl = buildRundownTable(9003, 164443, 783454, 4501662, leftRows, 1200, true);
+  const bounds = { min: 9, max: 16 };
+  const leftTbl = buildRundownTable(9003, 164443, 783454, 4501662, leftRows, SLIDE7_LEFT_AVAILABLE_HEIGHT, bounds, true);
   // small left padding on the time cell so it doesn't sit right at the column divider
-  const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, 1200, true, 120000);
+  const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, SLIDE7_RIGHT_AVAILABLE_HEIGHT, bounds, true, 120000);
   xml = xml.replace('</p:spTree>', leftTbl + rightTbl + '</p:spTree>');
   zip.file(path, xml);
 }
