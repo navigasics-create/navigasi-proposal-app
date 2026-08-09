@@ -260,9 +260,10 @@ async function runGenerate(token) {
 
     log('Mengupload ke Google Drive & convert ke Slides...');
     const metadata = { name: 'Penawaran_' + (data.nama_client || 'Navigasi') + '_' + Date.now(), mimeType: 'application/vnd.google-apps.presentation' };
+    const pptxFile = new File([pptxBlob], 'penawaran.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', pptxBlob);
+    form.append('file', pptxFile);
     const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
       method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form,
     });

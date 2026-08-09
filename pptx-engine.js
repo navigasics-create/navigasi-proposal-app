@@ -227,7 +227,10 @@ async function buildPptx(templateArrayBuffer, data) {
   if (data.slide8Photos) await editSlide8Photos(zip, data.slide8Photos);
   if (data.rundownLeft && data.rundownRight) await editSlide6(zip, data.rundownLeft, data.rundownRight);
   if (data.gamesLeft && data.gamesRight) await editSlide7(zip, data.gamesLeft, data.gamesRight);
-  const out = await zip.generateAsync({ type: (typeof window !== 'undefined') ? 'blob' : 'nodebuffer' });
+  const out = await zip.generateAsync({
+    type: (typeof window !== 'undefined') ? 'blob' : 'nodebuffer',
+    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  });
   return out;
 }
 
