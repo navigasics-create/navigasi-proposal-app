@@ -85,35 +85,70 @@ async function swapImage(zip, slideNum, oldRId, newImageBytes, ext) {
   zip.file(relsPath, relsXml);
 }
 
-// --- Slide 5: facility "Include" list — replaces the 8 known runs (with the
-// fragmented "Games M"/"a"/"ster " triple handled the same way as in Python) ---
+// --- Slide 5: facility "Include" list (8-run layout, unchanged) ---
 async function editSlide5FacilityList(zip, items) {
-  // items: array of up to 6 strings, in order (Tiket Area, ..., last item)
   const path = 'ppt/slides/slide5.xml';
   let xml = await zip.file(path).async('string');
 
   const spRegex = /(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<p:cNvPr id="1240"[\s\S]*?<\/p:sp>)/;
   const match = xml.match(spRegex);
-  if (!match) return;
+  if (!match) { zip.file(path, xml); return; }
   let spXml = match[1];
 
-  // Grab all <a:t> runs within the second paragraph and overwrite them in order,
-  // mirroring the 8-run layout (L1,L2,[L3 in 3 runs],L4,L5,L6) from the template.
   const runTexts = [
     items[0] || '', items[1] || '',
-    items[2] || '', '', '',       // L3 collapses into first run, rest blanked
+    items[2] || '', '', '',
     items[3] || '', items[4] || '', items[5] || '',
   ];
   let i = 0;
   const paragraphs = spXml.split('</a:p>');
-  // second paragraph is index 1 (index 0 is the header "Include :")
   if (paragraphs[1]) {
     let para = paragraphs[1];
     para = para.replace(/<a:t>[\s\S]*?<\/a:t>/g, () => `<a:t>${escapeXml(runTexts[i++] ?? '')}</a:t>`);
     paragraphs[1] = para;
   }
-  const newSpXml = paragraphs.join('</a:p>');
-  xml = xml.replace(spXml, newSpXml);
+  xml = xml.replace(spXml, paragraphs.join('</a:p>'));
+  zip.file(path, xml);
+}
+
+// --- Slide 5: Meals list (shape 1241, 3-run layout: "1x Lunch" / "1x " / "Coffe Break") ---
+async function editSlide5Meals(zip, items) {
+  const path = 'ppt/slides/slide5.xml';
+  let xml = await zip.file(path).async('string');
+  const spRegex = /(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<p:cNvPr id="1241"[\s\S]*?<\/p:sp>)/;
+  const match = xml.match(spRegex);
+  if (!match) { zip.file(path, xml); return; }
+  let spXml = match[1];
+  // 3 runs collapse to 2 logical lines: [item0], [item1, '']
+  const runTexts = [items[0] || '', items[1] || '', ''];
+  let i = 0;
+  const paragraphs = spXml.split('</a:p>');
+  if (paragraphs[1]) {
+    let para = paragraphs[1];
+    para = para.replace(/<a:t>[\s\S]*?<\/a:t>/g, () => `<a:t>${escapeXml(runTexts[i++] ?? '')}</a:t>`);
+    paragraphs[1] = para;
+  }
+  xml = xml.replace(spXml, paragraphs.join('</a:p>'));
+  zip.file(path, xml);
+}
+
+// --- Slide 5: Fasilitas list (shape 1242, 5 clean runs) ---
+async function editSlide5Fasilitas(zip, items) {
+  const path = 'ppt/slides/slide5.xml';
+  let xml = await zip.file(path).async('string');
+  const spRegex = /(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<p:cNvPr id="1242"[\s\S]*?<\/p:sp>)/;
+  const match = xml.match(spRegex);
+  if (!match) { zip.file(path, xml); return; }
+  let spXml = match[1];
+  const runTexts = [items[0] || '', items[1] || '', items[2] || '', items[3] || '', items[4] || ''];
+  let i = 0;
+  const paragraphs = spXml.split('</a:p>');
+  if (paragraphs[1]) {
+    let para = paragraphs[1];
+    para = para.replace(/<a:t>[\s\S]*?<\/a:t>/g, () => `<a:t>${escapeXml(runTexts[i++] ?? '')}</a:t>`);
+    paragraphs[1] = para;
+  }
+  xml = xml.replace(spXml, paragraphs.join('</a:p>'));
   zip.file(path, xml);
 }
 
@@ -142,8 +177,8 @@ function parseRundownLine(raw) {
   return { level, italic, text: line };
 }
 
-function buildTcPr() {
-  return `<a:tcPr marL="0" marR="0" marT="30000" marB="160000"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="0"><a:noFill/></a:lnB><a:noFill/></a:tcPr>`;
+function buildTcPr(extraMarL) {
+  return `<a:tcPr marL="${extraMarL || 0}" marR="0" marT="30000" marB="160000"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="0"><a:noFill/></a:lnB><a:noFill/></a:tcPr>`;
 }
 
 function buildRun(text, sz, italic) {
@@ -162,16 +197,16 @@ function buildDescCell(lines, sz, nested) {
   return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/>${paras}</a:txBody>${buildTcPr()}</a:tc>`;
 }
 
-function buildTimeCell(timeText, sz) {
-  return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p>${buildRun(timeText, sz, false)}</a:p></a:txBody>${buildTcPr()}</a:tc>`;
+function buildTimeCell(timeText, sz, extraMarL) {
+  return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p>${buildRun(timeText, sz, false)}</a:p></a:txBody>${buildTcPr(extraMarL)}</a:tc>`;
 }
 
-function buildRundownTable(shapeId, x, y, width, rows, sz, nested) {
+function buildRundownTable(shapeId, x, y, width, rows, sz, nested, timeMarL) {
   const totalHeight = rows.length * 300000;
   const trs = rows.map(row => {
     const timeText = row.time2 ? `${row.time1}-${row.time2}` : row.time1;
     const lines = row.label.split('\n').map(l => l.trim()).filter(Boolean);
-    return `<a:tr h="300000">${buildTimeCell(timeText, sz)}${buildDescCell(lines, sz, nested)}</a:tr>`;
+    return `<a:tr h="300000">${buildTimeCell(timeText, sz, timeMarL)}${buildDescCell(lines, sz, nested)}</a:tr>`;
   }).join('');
 
   return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${shapeId}" name="Table ${shapeId}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${totalHeight}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="0" bandRow="0"/><a:tblGrid><a:gridCol w="${TIME_COL_W}"/><a:gridCol w="${width - TIME_COL_W}"/></a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
@@ -194,7 +229,9 @@ async function editSlide6(zip, leftRows, rightRows) {
   xml = removeShapeByPos(xml, 63190, 1128323);
   xml = removeShapeByPos(xml, 4686290, 1128323);
   const leftTbl = buildRundownTable(9001, 63190, 1128323, 4544665, leftRows, 1200, false);
-  const rightTbl = buildRundownTable(9002, 4686290, 1128323, 4544665, rightRows, 1200, false);
+  // Right table's original width (4544665) pushes its right edge past the slide
+  // boundary (9144000 EMU) — narrowed here so long text wraps instead of overflowing.
+  const rightTbl = buildRundownTable(9002, 4686290, 1128323, 4350000, rightRows, 1200, false);
   xml = xml.replace('</p:spTree>', leftTbl + rightTbl + '</p:spTree>');
   zip.file(path, xml);
 }
@@ -205,7 +242,8 @@ async function editSlide7(zip, leftRows, rightRows) {
   xml = removeShapeByPos(xml, 164443, 783454);
   xml = removeShapeByPos(xml, 4421524, 656913);
   const leftTbl = buildRundownTable(9003, 164443, 783454, 4501662, leftRows, 1000, true);
-  const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, 1000, true);
+  // small left padding on the time cell so it doesn't sit right at the column divider
+  const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, 1000, true, 120000);
   xml = xml.replace('</p:spTree>', leftTbl + rightTbl + '</p:spTree>');
   zip.file(path, xml);
 }
@@ -223,6 +261,8 @@ async function buildPptx(templateArrayBuffer, data) {
   await editSlide2(zip, data);
   await editSlide4(zip, data);
   if (data.facilityItems) await editSlide5FacilityList(zip, data.facilityItems);
+  if (data.mealsItems) await editSlide5Meals(zip, data.mealsItems);
+  if (data.fasilitasItems) await editSlide5Fasilitas(zip, data.fasilitasItems);
   if (data.slide5Photos) await editSlide5Photos(zip, data.slide5Photos);
   if (data.slide8Photos) await editSlide8Photos(zip, data.slide8Photos);
   if (data.rundownLeft && data.rundownRight) await editSlide6(zip, data.rundownLeft, data.rundownRight);
@@ -236,7 +276,8 @@ async function buildPptx(templateArrayBuffer, data) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    buildPptx, editSlide2, editSlide4, editSlide5FacilityList, editSlide5Photos, editSlide8Photos,
-    editSlide6, editSlide7, swapImage, replaceShapeFirstRunText, replaceByTextPrefix, rupiah,
+    buildPptx, editSlide2, editSlide4, editSlide5FacilityList, editSlide5Meals, editSlide5Fasilitas,
+    editSlide5Photos, editSlide8Photos, editSlide6, editSlide7, swapImage,
+    replaceShapeFirstRunText, replaceByTextPrefix, rupiah,
   };
 }
