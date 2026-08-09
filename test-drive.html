@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tes Koneksi Google Drive — Navigasi</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  body {
+    font-family: 'Segoe UI', sans-serif; background: #0d2f22; color: #fff;
+    display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    margin: 0; padding: 20px;
+  }
+  .box { max-width: 420px; text-align: center; }
+  h1 { color: #c9a44c; font-size: 20px; }
+  p { color: #cfe0d5; font-size: 13.5px; line-height: 1.6; }
+  button {
+    background: #c9a44c; color: #0d2f22; border: none; padding: 14px 22px;
+    border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; margin-top: 16px;
+  }
+  button:disabled { opacity: 0.6; }
+  .log {
+    text-align: left; background: rgba(0,0,0,0.25); border-radius: 8px; padding: 12px;
+    margin-top: 20px; font-size: 12px; font-family: monospace; white-space: pre-wrap;
+    max-height: 260px; overflow-y: auto;
+  }
+  .step { margin-bottom: 4px; }
+  .ok { color: #7fd99a; }
+  .err { color: #ff8a8a; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>🧪 Tes Koneksi Google Drive</h1>
+  <p>Klik tombol di bawah, izinkan akses, lalu tunggu prosesnya. Kalau berhasil, PDF akan otomatis terdownload.</p>
+  <button id="btn" onclick="startTest()">Sign in &amp; Tes Generate PDF</button>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const CLIENT_ID = '737418245676-9cm7prnuhkgopgpni1egcdpln3c3alcs.apps.googleusercontent.com';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = 'step ' + (cls || '');
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function startTest() {
+  document.getElementById('btn').disabled = true;
+  document.getElementById('log').innerHTML = '';
+  log('Membuka jendela izin Google...');
+
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPE,
+    callback: async (response) => {
+      if (response.error) {
+        log('❌ Gagal dapat izin: ' + response.error, 'err');
+        document.getElementById('btn').disabled = false;
+        return;
+      }
+      log('✅ Izin diberikan.', 'ok');
+      await runFlow(response.access_token);
+    },
+  });
+  tokenClient.requestAccessToken();
+}
+
+async function runFlow(token) {
+  try {
+    log('Mengambil file template.pptx...');
+    const pptxRes = await fetch('template.pptx');
+    if (!pptxRes.ok) throw new Error('Gagal ambil template.pptx (' + pptxRes.status + ')');
+    const pptxBlob = await pptxRes.blob();
+    log('✅ Template diambil (' + Math.round(pptxBlob.size/1024) + ' KB).', 'ok');
+
+    log('Mengupload ke Google Drive & convert ke Slides...');
+    const metadata = {
+      name: 'Tes_Navigasi_' + Date.now(),
+      mimeType: 'application/vnd.google-apps.presentation',
+    };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', pptxBlob);
+
+    const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: form,
+    });
+    if (!uploadRes.ok) throw new Error('Upload gagal (' + uploadRes.status + '): ' + await uploadRes.text());
+    const uploadData = await uploadRes.json();
+    log('✅ Berhasil diupload & convert. File ID: ' + uploadData.id, 'ok');
+
+    log('Meminta export PDF dari Google...');
+    const pdfRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${uploadData.id}/export?mimeType=application/pdf`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!pdfRes.ok) throw new Error('Export PDF gagal (' + pdfRes.status + ')');
+    const pdfBlob = await pdfRes.blob();
+    log('✅ PDF diterima (' + Math.round(pdfBlob.size/1024) + ' KB). Mendownload...', 'ok');
+
+    const url = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Tes_Penawaran_Navigasi.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    log('🎉 SELESAI! Kalau PDF sudah terdownload, koneksi Drive berhasil.', 'ok');
+  } catch (err) {
+    log('❌ ERROR: ' + err.message, 'err');
+  } finally {
+    document.getElementById('btn').disabled = false;
+  }
+}
+</script>
+</body>
+</html>
