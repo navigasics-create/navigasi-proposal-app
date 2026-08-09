@@ -89,6 +89,7 @@ async function swapImage(zip, slideNum, oldRId, newImageBytes, ext) {
 // Supports ANY number of items (not limited to the original template's slot count),
 // and auto-fits the font size to the item count so the box height (2699400 EMU) is well used.
 const SLIDE5_LIST_HEIGHT = 2699400;
+const SLIDE5_LIST_WIDTH = 1666200;
 
 function buildListRunStyle(sz) {
   return `sz="${sz}" b="1" dirty="0"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Calibri"/><a:cs typeface="Calibri"/><a:sym typeface="Calibri"/>`;
@@ -101,7 +102,7 @@ function rebuildListParagraph(spXml, items) {
   const pPrMatch = paragraphs[1].match(/<a:pPr[\s\S]*?<\/a:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : '';
 
-  const sz = computeAutoFontSize(items.length, 1, SLIDE5_LIST_HEIGHT, 8, 15, 0);
+  const sz = computeAutoFontSizeForTexts(items, 1, SLIDE5_LIST_HEIGHT, SLIDE5_LIST_WIDTH, 7, 11, 0);
   const style = buildListRunStyle(sz);
 
   const runs = items.map(text => `<a:r><a:rPr lang="en" ${style}</a:rPr><a:t>${escapeXml(text)}</a:t></a:r>`);
@@ -144,14 +145,28 @@ const SLIDE6_AVAILABLE_HEIGHT = 3645265;   // y=1128323 down to the footer bar
 const SLIDE7_LEFT_AVAILABLE_HEIGHT = 3990134;
 const SLIDE7_RIGHT_AVAILABLE_HEIGHT = 4116675;
 
-// --- Auto-fit: computes a font size (in OOXML hundredths-of-a-point units) so that
-// the content fills the available box height, instead of using a fixed size. ---
-function computeAutoFontSize(totalLines, rowCount, availableHeightEMU, minPt, maxPt, rowOverheadPt) {
-  const heightPt = availableHeightEMU / 12700; // 12700 EMU = 1pt
-  const usablePt = Math.max(heightPt - rowCount * (rowOverheadPt || 0), 20);
-  let sizePt = usablePt / (Math.max(totalLines, 1) * 1.3);
-  sizePt = Math.max(minPt, Math.min(maxPt, sizePt));
-  return Math.round(sizePt * 100);
+// --- Auto-fit v2: wrap-aware. Estimates how many visual lines each text will wrap
+// into at a given font size + column width, then iterates toward a font size that
+// fills the available height without overflowing. ---
+function estimateWrappedLines(text, fontSizePt, colWidthEMU) {
+  const colWidthPt = colWidthEMU / 12700;
+  const avgCharWidthPt = fontSizePt * 0.62; // conservative estimate — better to overestimate wrap than overflow
+  const charsPerLine = Math.max(Math.floor(colWidthPt / avgCharWidthPt), 6);
+  return Math.max(1, Math.ceil((text.length || 1) / charsPerLine));
+}
+
+function computeAutoFontSizeForTexts(texts, rowCount, availableHeightEMU, colWidthEMU, minPt, maxPt, rowOverheadPt) {
+  let size = maxPt;
+  for (let iter = 0; iter < 8; iter++) {
+    const totalWrapped = texts.reduce((sum, t) => sum + estimateWrappedLines(t, size, colWidthEMU), 0);
+    const heightPt = availableHeightEMU / 12700;
+    const usablePt = Math.max(heightPt - rowCount * (rowOverheadPt || 0), 20);
+    let newSize = usablePt / (Math.max(totalWrapped, 1) * 2.6);
+    newSize = Math.max(minPt, Math.min(maxPt, newSize));
+    if (Math.abs(newSize - size) < 0.25) { size = newSize; break; }
+    size = newSize;
+  }
+  return Math.round(size * 100);
 }
 
 function parseRundownLine(raw) {
@@ -192,8 +207,14 @@ function buildTimeCell(timeText, sz, extraMarL) {
 
 // availableHeightEMU: fixed box height to fill. sizeBounds: {min,max} in points.
 function buildRundownTable(shapeId, x, y, width, rows, availableHeightEMU, sizeBounds, nested, timeMarL) {
-  const totalLines = rows.reduce((sum, r) => sum + r.label.split('\n').map(l => l.trim()).filter(Boolean).length, 0);
-  const sz = computeAutoFontSize(totalLines, rows.length, availableHeightEMU, sizeBounds.min, sizeBounds.max, 15);
+  const descColWidth = width - TIME_COL_W;
+  const allTexts = [];
+  rows.forEach(row => {
+    row.label.split('\n').map(l => l.trim()).filter(Boolean).forEach(raw => {
+      allTexts.push(parseRundownLine(raw).text);
+    });
+  });
+  const sz = computeAutoFontSizeForTexts(allTexts, rows.length, availableHeightEMU, descColWidth, sizeBounds.min, sizeBounds.max, 15);
 
   const rowH = Math.floor(availableHeightEMU / Math.max(rows.length, 1));
   const trs = rows.map(row => {
@@ -221,7 +242,7 @@ async function editSlide6(zip, leftRows, rightRows) {
   let xml = await zip.file(path).async('string');
   xml = removeShapeByPos(xml, 63190, 1128323);
   xml = removeShapeByPos(xml, 4686290, 1128323);
-  const bounds = { min: 10, max: 18 };
+  const bounds = { min: 7, max: 14 };
   const leftTbl = buildRundownTable(9001, 63190, 1128323, 4544665, leftRows, SLIDE6_AVAILABLE_HEIGHT, bounds, false);
   // Right table's original width (4544665) pushes its right edge past the slide
   // boundary — narrowed here so long text wraps instead of overflowing.
@@ -235,7 +256,7 @@ async function editSlide7(zip, leftRows, rightRows) {
   let xml = await zip.file(path).async('string');
   xml = removeShapeByPos(xml, 164443, 783454);
   xml = removeShapeByPos(xml, 4421524, 656913);
-  const bounds = { min: 9, max: 16 };
+  const bounds = { min: 7, max: 13 };
   const leftTbl = buildRundownTable(9003, 164443, 783454, 4501662, leftRows, SLIDE7_LEFT_AVAILABLE_HEIGHT, bounds, true);
   // small left padding on the time cell so it doesn't sit right at the column divider
   const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, SLIDE7_RIGHT_AVAILABLE_HEIGHT, bounds, true, 120000);
