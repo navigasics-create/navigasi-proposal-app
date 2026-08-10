@@ -29,7 +29,7 @@
   .card h2{font-family:'Playfair Display',serif; font-size:17px; margin:0 0 4px; color:var(--ink);}
   .card .hint{font-size:12px; color:var(--muted); margin:0 0 14px;}
   label{display:block; font-size:12.5px; font-weight:600; color:var(--ink-2); margin-bottom:5px;}
-  input, textarea{width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:7px; font-size:14px; font-family:'Inter',sans-serif; background:#fff; color:var(--text); margin-bottom:12px;}
+  input, textarea, select{width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:7px; font-size:14px; font-family:'Inter',sans-serif; background:#fff; color:var(--text); margin-bottom:12px;}
   textarea{resize:vertical; min-height:70px;}
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
   .rundown-row{display:grid; grid-template-columns:60px 60px 1fr 28px; gap:8px; margin-bottom:8px; align-items:start;}
@@ -85,6 +85,11 @@
         <div><label>Harga / Pax (Rp)</label><input id="f-price" type="number" value=""></div>
         <div><label>Total Harga</label><input id="f-total" disabled></div>
       </div>
+      <label>Catatan Pajak</label>
+      <select id="f-taxnote">
+        <option value="Harga belum termasuk PPN & PPh (jika diperlukan faktur pajak).">Belum termasuk PPN & PPh</option>
+        <option value="Harga sudah termasuk PPN & PPh.">Sudah termasuk PPN & PPh</option>
+      </select>
     </div>
     <div class="card">
       <h2>Fasilitas yang Didapat (Slide 5)</h2>
@@ -253,6 +258,7 @@ async function runGenerate(token) {
       activity: document.getElementById('f-title').value,
       judul_program: document.getElementById('f-title').value,
       harga_pax: Number(document.getElementById('f-price').value) || 0,
+      taxNote: document.getElementById('f-taxnote').value,
       facilityItems: document.getElementById('f-facilities').value.split('\n').filter(Boolean),
       mealsItems: document.getElementById('f-meals').value.split('\n').filter(Boolean),
       fasilitasItems: document.getElementById('f-fasilitas').value.split('\n').filter(Boolean),

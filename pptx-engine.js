@@ -61,6 +61,9 @@ async function editSlide4(zip, data) {
   xml = xml.replace(/(<a:t>)\{\{judul_program\}\}(<\/a:t>)/, (m, o, c) => o + escapeXml(data.judul_program) + c);
   xml = replaceByTextPrefix(xml, 'Harga / Pax', `Harga / Pax\t: ${rupiah(data.harga_pax)} / Pax / Orang`);
   xml = replaceByTextPrefix(xml, 'Total Harga', `Total Harga \t: ${rupiah(data.harga_pax * data.pax)}`);
+  if (data.taxNote) {
+    xml = replaceShapeFirstRunText(xml, 1227, data.taxNote);
+  }
   zip.file(path, xml);
 }
 
@@ -182,7 +185,7 @@ function parseRundownLine(raw) {
 }
 
 function buildTcPr(extraMarL) {
-  return `<a:tcPr marL="${extraMarL || 0}" marR="0" marT="30000" marB="160000"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="0"><a:noFill/></a:lnB><a:noFill/></a:tcPr>`;
+  return `<a:tcPr marL="${extraMarL || 0}" marR="0" marT="20000" marB="60000"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="0"><a:noFill/></a:lnB><a:noFill/></a:tcPr>`;
 }
 
 function buildRun(text, sz, italic) {
@@ -194,7 +197,7 @@ function buildDescCell(lines, sz, nested) {
   lines.forEach((raw, i) => {
     const { level, italic, text } = parseRundownLine(raw);
     const marL = nested ? INDENT_STEP * level : 0;
-    const spcBef = i === 0 ? 0 : 600;
+    const spcBef = i === 0 ? 0 : 300;
     const pPr = `<a:pPr${marL ? ` marL="${marL}" indent="0"` : ''}><a:lnSpc><a:spcPct val="100000"/></a:lnSpc><a:spcBef><a:spcPts val="${spcBef}"/></a:spcBef></a:pPr>`;
     paras += `<a:p>${pPr}${buildRun(text, sz, italic)}</a:p>`;
   });
@@ -214,12 +217,14 @@ function buildRundownTable(shapeId, x, y, width, rows, availableHeightEMU, sizeB
       allTexts.push(parseRundownLine(raw).text);
     });
   });
-  const sz = computeAutoFontSizeForTexts(allTexts, rows.length, availableHeightEMU, descColWidth, sizeBounds.min, sizeBounds.max, 15);
+  const sz = computeAutoFontSizeForTexts(allTexts, rows.length, availableHeightEMU, descColWidth, sizeBounds.min, sizeBounds.max, 7);
 
-  const rowH = Math.floor(availableHeightEMU / Math.max(rows.length, 1));
-  const trs = rows.map(row => {
+  const rowLineCounts = rows.map(row => row.label.split('\n').map(l => l.trim()).filter(Boolean).length || 1);
+  const totalLineCount = rowLineCounts.reduce((a, b) => a + b, 0);
+  const trs = rows.map((row, idx) => {
     const timeText = row.time2 ? `${row.time1}-${row.time2}` : row.time1;
     const lines = row.label.split('\n').map(l => l.trim()).filter(Boolean);
+    const rowH = Math.max(Math.floor((rowLineCounts[idx] / totalLineCount) * availableHeightEMU), 150000);
     return `<a:tr h="${rowH}">${buildTimeCell(timeText, sz, timeMarL)}${buildDescCell(lines, sz, nested)}</a:tr>`;
   }).join('');
 
