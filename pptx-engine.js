@@ -219,16 +219,18 @@ function buildRundownTable(shapeId, x, y, width, rows, availableHeightEMU, sizeB
   });
   const sz = computeAutoFontSizeForTexts(allTexts, rows.length, availableHeightEMU, descColWidth, sizeBounds.min, sizeBounds.max, 7);
 
-  const rowLineCounts = rows.map(row => row.label.split('\n').map(l => l.trim()).filter(Boolean).length || 1);
-  const totalLineCount = rowLineCounts.reduce((a, b) => a + b, 0);
-  const trs = rows.map((row, idx) => {
+  const lineHeightPt = (sz / 100) * 1.5;
+  const rowOverheadPt = 7;
+  let totalHeightEMU = 0;
+  const trs = rows.map(row => {
     const timeText = row.time2 ? `${row.time1}-${row.time2}` : row.time1;
     const lines = row.label.split('\n').map(l => l.trim()).filter(Boolean);
-    const rowH = Math.max(Math.floor((rowLineCounts[idx] / totalLineCount) * availableHeightEMU), 150000);
+    const rowH = Math.round((lines.length * lineHeightPt + rowOverheadPt) * 12700);
+    totalHeightEMU += rowH;
     return `<a:tr h="${rowH}">${buildTimeCell(timeText, sz, timeMarL)}${buildDescCell(lines, sz, nested)}</a:tr>`;
   }).join('');
 
-  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${shapeId}" name="Table ${shapeId}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${availableHeightEMU}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="0" bandRow="0"/><a:tblGrid><a:gridCol w="${TIME_COL_W}"/><a:gridCol w="${width - TIME_COL_W}"/></a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${shapeId}" name="Table ${shapeId}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${totalHeightEMU}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="0" bandRow="0"/><a:tblGrid><a:gridCol w="${TIME_COL_W}"/><a:gridCol w="${width - TIME_COL_W}"/></a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
 }
 
 function removeShapeByPos(xml, offX, offY) {
