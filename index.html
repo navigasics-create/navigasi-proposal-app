@@ -308,16 +308,63 @@ function addRow(key, time1 = '', time2 = '', label = '') {
 }
 function removeRow(key, i) { state[key].splice(i, 1); renderRows(key); }
 
+function formatTimeInput(el) {
+  let digits = el.value.replace(/\D/g, '').slice(0, 4);
+  let formatted = digits;
+  if (digits.length > 2) formatted = digits.slice(0, 2) + ':' + digits.slice(2);
+  el.value = formatted;
+}
+
 function renderRows(key) {
   const containerId = { rdLeft: 'rd-left-rows', rdRight: 'rd-right-rows', gmLeft: 'gm-left-rows', gmRight: 'gm-right-rows' }[key];
   const c = document.getElementById(containerId);
   c.innerHTML = state[key].map((r, i) => `
     <div class="rundown-row">
-      <input value="${r.time1}" placeholder="09:00" oninput="state.${key}[${i}].time1=this.value">
-      <input value="${r.time2}" placeholder="09:30" oninput="state.${key}[${i}].time2=this.value">
-      <textarea oninput="state.${key}[${i}].label=this.value">${r.label}</textarea>
+      <input value="${r.time1}" placeholder="09:00" data-key="${key}" data-row="${i}" data-field="time1"
+        oninput="formatTimeInput(this); state.${key}[${i}].time1=this.value" onkeydown="handleRowNav(event,this)">
+      <input value="${r.time2}" placeholder="09:30" data-key="${key}" data-row="${i}" data-field="time2"
+        oninput="formatTimeInput(this); state.${key}[${i}].time2=this.value" onkeydown="handleRowNav(event,this)">
+      <textarea data-key="${key}" data-row="${i}" data-field="label"
+        oninput="state.${key}[${i}].label=this.value" onkeydown="handleRowNav(event,this)">${r.label}</textarea>
       <button class="rm-btn" onclick="removeRow('${key}',${i})">×</button>
     </div>`).join('');
+}
+
+// Desktop keyboard navigation: Up/Down moves between rows in the same field,
+// Left/Right moves between fields in the same row (only when caret is at the edge,
+// so normal text editing inside the textarea still works).
+function handleRowNav(e, el) {
+  const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+  if (!isArrow) return;
+  const key = el.dataset.key;
+  const row = parseInt(el.dataset.row, 10);
+  const field = el.dataset.field;
+  const fieldsOrder = ['time1', 'time2', 'label'];
+  const container = el.closest('.rundown-row').parentElement;
+
+  const focusField = (targetRow, targetField) => {
+    const sel = `[data-key="${key}"][data-row="${targetRow}"][data-field="${targetField}"]`;
+    const target = container.querySelector(sel);
+    if (target) { e.preventDefault(); target.focus(); if (target.select) target.select(); }
+  };
+
+  if (e.key === 'ArrowUp') { focusField(row - 1, field); return; }
+  if (e.key === 'ArrowDown') { focusField(row + 1, field); return; }
+
+  if (e.key === 'ArrowLeft' && el.tagName !== 'TEXTAREA') {
+    if (el.selectionStart === 0) {
+      const idx = fieldsOrder.indexOf(field);
+      if (idx > 0) focusField(row, fieldsOrder[idx - 1]);
+    }
+    return;
+  }
+  if (e.key === 'ArrowRight' && el.tagName !== 'TEXTAREA') {
+    if (el.selectionEnd === el.value.length) {
+      const idx = fieldsOrder.indexOf(field);
+      if (idx < fieldsOrder.length - 1) focusField(row, fieldsOrder[idx + 1]);
+    }
+    return;
+  }
 }
 
 addRow('rdLeft', '09:00', '09:30', 'Peserta tiba\nToileting\nPreparation');
