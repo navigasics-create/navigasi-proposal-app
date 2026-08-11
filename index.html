@@ -220,6 +220,34 @@ function getAccessToken() {
 }
 
 const MASTER_PREFIX = { rundown: '[RundownAcara]', games: '[RundownGames]' };
+const MASTER_FOLDER_NAME = 'Master Roundown Activity';
+const PROPOSAL_FOLDER_NAME = 'Navigasi Proposal Generator';
+const folderIdCache = {};
+
+async function getOrCreateFolder(token, folderName) {
+  if (folderIdCache[folderName]) return folderIdCache[folderName];
+  const q = encodeURIComponent(`name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  if (data.files && data.files.length > 0) {
+    folderIdCache[folderName] = data.files[0].id;
+    return folderIdCache[folderName];
+  }
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder' }),
+  });
+  if (!createRes.ok) throw new Error(await createRes.text());
+  const created = await createRes.json();
+  folderIdCache[folderName] = created.id;
+  return folderIdCache[folderName];
+}
+const getMasterFolderId = (token) => getOrCreateFolder(token, MASTER_FOLDER_NAME);
+const getProposalFolderId = (token) => getOrCreateFolder(token, PROPOSAL_FOLDER_NAME);
 
 async function saveMaster(type) {
   const nameInput = document.getElementById(type === 'rundown' ? 'rd-master-name' : 'gm-master-name');
@@ -227,11 +255,12 @@ async function saveMaster(type) {
   if (!name) { alert('Isi dulu nama master-nya.'); return; }
   try {
     const token = await getAccessToken();
+    const folderId = await getMasterFolderId(token);
     const payload = type === 'rundown'
       ? { left: state.rdLeft, right: state.rdRight }
       : { left: state.gmLeft, right: state.gmRight };
     const fileName = `${MASTER_PREFIX[type]} ${name}.json`;
-    const metadata = { name: fileName, mimeType: 'application/json' };
+    const metadata = { name: fileName, mimeType: 'application/json', parents: [folderId] };
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
     form.append('file', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
@@ -252,7 +281,8 @@ async function refreshMasterList(type) {
   const select = document.getElementById(selectId);
   try {
     const token = await getAccessToken();
-    const q = encodeURIComponent(`name contains '${MASTER_PREFIX[type]}' and trashed = false`);
+    const folderId = await getMasterFolderId(token);
+    const q = encodeURIComponent(`'${folderId}' in parents and name contains '${MASTER_PREFIX[type]}' and trashed = false`);
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
       headers: { Authorization: 'Bearer ' + token },
     });
@@ -438,7 +468,12 @@ async function runGenerate(token) {
     log('✅ PPTX tersusun (' + Math.round(pptxBlob.size / 1024) + ' KB).', 'ok');
 
     log('Mengupload ke Google Drive & convert ke Slides...');
-    const metadata = { name: 'Penawaran_' + (data.nama_client || 'Navigasi') + '_' + Date.now(), mimeType: 'application/vnd.google-apps.presentation' };
+    const proposalFolderId = await getProposalFolderId(token);
+    const metadata = {
+      name: 'Penawaran_' + (data.nama_client || 'Navigasi') + '_' + Date.now(),
+      mimeType: 'application/vnd.google-apps.presentation',
+      parents: [proposalFolderId],
+    };
     const pptxFile = new File([pptxBlob], 'penawaran.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
