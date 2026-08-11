@@ -45,6 +45,11 @@
   .log .ok{color:#7fd99a;} .log .err{color:#ff8a8a;}
   .col-block{margin-bottom:14px;}
   .col-block h3{font-size:12.5px; color:var(--muted); margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;}
+  .master-box{background:var(--cream); border:1px dashed var(--gold); border-radius:8px; padding:12px; margin-bottom:16px;}
+  .master-box label{font-size:11.5px;}
+  .secondary-btn{background:var(--ink-2); color:#fff; border:none; padding:9px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;}
+  .secondary-btn.full{width:100%; margin-bottom:4px;}
+  select{width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; background:#fff; margin-bottom:8px;}
 </style>
 </head>
 <body>
@@ -118,6 +123,21 @@ Standar P3K</textarea>
     <div class="card">
       <h2>Rundown Acara (Slide 6)</h2>
       <p class="hint">Kolom kiri & kanan diisi terpisah, sesuai desain aslinya.</p>
+
+      <div class="master-box">
+        <label>📂 Muat dari Master Rundown</label>
+        <div class="row2">
+          <select id="rd-master-list"><option value="">— pilih master —</option></select>
+          <button class="secondary-btn" onclick="refreshMasterList('rundown')">🔄 Muat Daftar</button>
+        </div>
+        <button class="secondary-btn full" onclick="loadMaster('rundown')">Terapkan Master Terpilih</button>
+        <label style="margin-top:12px">💾 Simpan Susunan Sekarang sebagai Master</label>
+        <div class="row2">
+          <input id="rd-master-name" placeholder="Nama master, cth: Rundown Offroad 1 Hari">
+          <button class="secondary-btn" onclick="saveMaster('rundown')">Simpan</button>
+        </div>
+      </div>
+
       <div class="col-block">
         <h3>Kolom Kiri</h3>
         <div id="rd-left-rows"></div>
@@ -136,6 +156,21 @@ Standar P3K</textarea>
     <div class="card">
       <h2>Rundown Games (Slide 7)</h2>
       <p class="hint">Tips: awali baris dengan <b>&gt;</b> untuk indent, apit <b>*teks*</b> untuk miring (kategori game).</p>
+
+      <div class="master-box">
+        <label>📂 Muat dari Master Rundown Games</label>
+        <div class="row2">
+          <select id="gm-master-list"><option value="">— pilih master —</option></select>
+          <button class="secondary-btn" onclick="refreshMasterList('games')">🔄 Muat Daftar</button>
+        </div>
+        <button class="secondary-btn full" onclick="loadMaster('games')">Terapkan Master Terpilih</button>
+        <label style="margin-top:12px">💾 Simpan Susunan Sekarang sebagai Master</label>
+        <div class="row2">
+          <input id="gm-master-name" placeholder="Nama master, cth: Games Team Building Standar">
+          <button class="secondary-btn" onclick="saveMaster('games')">Simpan</button>
+        </div>
+      </div>
+
       <div class="chip-lib" id="game-chip-lib"></div>
       <div class="col-block">
         <h3>Kolom Kiri</h3>
@@ -164,6 +199,97 @@ Standar P3K</textarea>
 <script>
 const CLIENT_ID = '737418245676-9cm7prnuhkgopgpni1egcdpln3c3alcs.apps.googleusercontent.com';
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+let cachedToken = null;
+let cachedTokenExpiry = 0;
+function getAccessToken() {
+  return new Promise((resolve, reject) => {
+    if (cachedToken && Date.now() < cachedTokenExpiry) { resolve(cachedToken); return; }
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPE,
+      callback: (response) => {
+        if (response.error) { reject(new Error(response.error)); return; }
+        cachedToken = response.access_token;
+        cachedTokenExpiry = Date.now() + (response.expires_in - 60) * 1000;
+        resolve(cachedToken);
+      },
+    });
+    tokenClient.requestAccessToken();
+  });
+}
+
+const MASTER_PREFIX = { rundown: '[RundownAcara]', games: '[RundownGames]' };
+
+async function saveMaster(type) {
+  const nameInput = document.getElementById(type === 'rundown' ? 'rd-master-name' : 'gm-master-name');
+  const name = nameInput.value.trim();
+  if (!name) { alert('Isi dulu nama master-nya.'); return; }
+  try {
+    const token = await getAccessToken();
+    const payload = type === 'rundown'
+      ? { left: state.rdLeft, right: state.rdRight }
+      : { left: state.gmLeft, right: state.gmRight };
+    const fileName = `${MASTER_PREFIX[type]} ${name}.json`;
+    const metadata = { name: fileName, mimeType: 'application/json' };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    nameInput.value = '';
+    alert('Tersimpan sebagai master: "' + name + '"');
+    refreshMasterList(type);
+  } catch (err) {
+    alert('Gagal menyimpan: ' + err.message);
+  }
+}
+
+async function refreshMasterList(type) {
+  const selectId = type === 'rundown' ? 'rd-master-list' : 'gm-master-list';
+  const select = document.getElementById(selectId);
+  try {
+    const token = await getAccessToken();
+    const q = encodeURIComponent(`name contains '${MASTER_PREFIX[type]}' and trashed = false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    select.innerHTML = '<option value="">— pilih master —</option>' +
+      data.files.map(f => `<option value="${f.id}">${f.name.replace(MASTER_PREFIX[type], '').replace('.json', '').trim()}</option>`).join('');
+  } catch (err) {
+    alert('Gagal ambil daftar master: ' + err.message);
+  }
+}
+
+async function loadMaster(type) {
+  const selectId = type === 'rundown' ? 'rd-master-list' : 'gm-master-list';
+  const fileId = document.getElementById(selectId).value;
+  if (!fileId) { alert('Pilih master dari daftar dulu.'); return; }
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const payload = await res.json();
+    if (type === 'rundown') {
+      state.rdLeft = payload.left || [];
+      state.rdRight = payload.right || [];
+      renderRows('rdLeft'); renderRows('rdRight');
+    } else {
+      state.gmLeft = payload.left || [];
+      state.gmRight = payload.right || [];
+      renderRows('gmLeft'); renderRows('gmRight');
+    }
+    alert('Master berhasil dimuat, silakan cek & edit sebelum generate.');
+  } catch (err) {
+    alert('Gagal memuat master: ' + err.message);
+  }
+}
 
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
@@ -230,22 +356,10 @@ function log(msg, cls) {
 function generate() {
   document.getElementById('gen-btn').disabled = true;
   document.getElementById('log').innerHTML = '';
-  log('Membuka jendela izin Google...');
-
-  const tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPE,
-    callback: async (response) => {
-      if (response.error) {
-        log('❌ Gagal dapat izin: ' + response.error, 'err');
-        document.getElementById('gen-btn').disabled = false;
-        return;
-      }
-      log('✅ Izin diberikan.', 'ok');
-      await runGenerate(response.access_token);
-    },
-  });
-  tokenClient.requestAccessToken();
+  log('Menyiapkan akses Google...');
+  getAccessToken()
+    .then(token => { log('✅ Izin siap.', 'ok'); return runGenerate(token); })
+    .catch(err => { log('❌ Gagal dapat izin: ' + err.message, 'err'); document.getElementById('gen-btn').disabled = false; });
 }
 
 async function runGenerate(token) {
