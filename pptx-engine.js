@@ -142,7 +142,7 @@ async function editSlide5Photos(zip, photos) {
 }
 
 const RUNDOWN_COLOR = 'AB8645';
-const TIME_COL_W = 1150000;
+const TIME_COL_W = 1300000;
 const INDENT_STEP = 180000;
 const SLIDE6_AVAILABLE_HEIGHT = 3645265;   // y=1128323 down to the footer bar
 const SLIDE7_LEFT_AVAILABLE_HEIGHT = 3990134;
@@ -164,7 +164,7 @@ function computeAutoFontSizeForTexts(texts, rowCount, availableHeightEMU, colWid
     const totalWrapped = texts.reduce((sum, t) => sum + estimateWrappedLines(t, size, colWidthEMU), 0);
     const heightPt = availableHeightEMU / 12700;
     const usablePt = Math.max(heightPt - rowCount * (rowOverheadPt || 0), 20);
-    let newSize = usablePt / (Math.max(totalWrapped, 1) * 2.6);
+    let newSize = usablePt / (Math.max(totalWrapped, 1) * 1.55);
     newSize = Math.max(minPt, Math.min(maxPt, newSize));
     if (Math.abs(newSize - size) < 0.25) { size = newSize; break; }
     size = newSize;
@@ -249,7 +249,7 @@ async function editSlide6(zip, leftRows, rightRows) {
   let xml = await zip.file(path).async('string');
   xml = removeShapeByPos(xml, 63190, 1128323);
   xml = removeShapeByPos(xml, 4686290, 1128323);
-  const bounds = { min: 7, max: 14 };
+  const bounds = { min: 7, max: 18 };
   const leftTbl = buildRundownTable(9001, 63190, 1128323, 4544665, leftRows, SLIDE6_AVAILABLE_HEIGHT, bounds, false);
   // Right table's original width (4544665) pushes its right edge past the slide
   // boundary — narrowed here so long text wraps instead of overflowing.
@@ -263,7 +263,7 @@ async function editSlide7(zip, leftRows, rightRows) {
   let xml = await zip.file(path).async('string');
   xml = removeShapeByPos(xml, 164443, 783454);
   xml = removeShapeByPos(xml, 4421524, 656913);
-  const bounds = { min: 7, max: 13 };
+  const bounds = { min: 7, max: 16 };
   const leftTbl = buildRundownTable(9003, 164443, 783454, 4501662, leftRows, SLIDE7_LEFT_AVAILABLE_HEIGHT, bounds, true);
   // small left padding on the time cell so it doesn't sit right at the column divider
   const rightTbl = buildRundownTable(9004, 4421524, 656913, 4369776, rightRows, SLIDE7_RIGHT_AVAILABLE_HEIGHT, bounds, true, 120000);
