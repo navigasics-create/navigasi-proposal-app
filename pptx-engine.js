@@ -209,7 +209,9 @@ function buildTimeCell(timeText, sz, extraMarL) {
 }
 
 function buildSeparatorLine(shapeId, x, y, width) {
-  return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeId}" name="Sep ${shapeId}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="6350"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="D6C7A1"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
+  const lineWidth = Math.round(width * 0.88);
+  const offsetX = x + Math.round((width - lineWidth) / 2);
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeId}" name="Sep ${shapeId}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${offsetX}" y="${y}"/><a:ext cx="${lineWidth}" cy="3175"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="E4D9BF"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
 }
 
 // availableHeightEMU: fixed box height to fill. sizeBounds: {min,max} in points.
