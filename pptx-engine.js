@@ -144,9 +144,9 @@ async function editSlide5Photos(zip, photos) {
 const RUNDOWN_COLOR = 'AB8645';
 const TIME_COL_W = 1300000;
 const INDENT_STEP = 180000;
-const SLIDE6_AVAILABLE_HEIGHT = 3645265;   // y=1128323 down to the footer bar
-const SLIDE7_LEFT_AVAILABLE_HEIGHT = 3990134;
-const SLIDE7_RIGHT_AVAILABLE_HEIGHT = 4116675;
+const SLIDE6_AVAILABLE_HEIGHT = 3200000;   // reduced with safety margin for Google Drive's renderer
+const SLIDE7_LEFT_AVAILABLE_HEIGHT = 3500000;
+const SLIDE7_RIGHT_AVAILABLE_HEIGHT = 3600000;
 
 // --- Auto-fit v2: wrap-aware. Estimates how many visual lines each text will wrap
 // into at a given font size + column width, then iterates toward a font size that
@@ -164,7 +164,7 @@ function computeAutoFontSizeForTexts(texts, rowCount, availableHeightEMU, colWid
     const totalWrapped = texts.reduce((sum, t) => sum + estimateWrappedLines(t, size, colWidthEMU), 0);
     const heightPt = availableHeightEMU / 12700;
     const usablePt = Math.max(heightPt - rowCount * (rowOverheadPt || 0), 20);
-    let newSize = usablePt / (Math.max(totalWrapped, 1) * 1.75);
+    let newSize = usablePt / (Math.max(totalWrapped, 1) * 1.85);
     newSize = Math.max(minPt, Math.min(maxPt, newSize));
     if (Math.abs(newSize - size) < 0.25) { size = newSize; break; }
     size = newSize;
@@ -223,8 +223,8 @@ function buildRundownTable(shapeId, x, y, width, rows, availableHeightEMU, sizeB
   });
   const sz = computeAutoFontSizeForTexts(allTexts, rows.length, availableHeightEMU, descColWidth, sizeBounds.min, sizeBounds.max, 7);
 
-  const lineHeightPt = (sz / 100) * 1.5;
-  const rowOverheadPt = 7;
+  const lineHeightPt = (sz / 100) * 1.6;
+  const rowOverheadPt = 8;
   let totalHeightEMU = 0;
   const rowHeights = rows.map(row => {
     const lines = row.label.split('\n').map(l => l.trim()).filter(Boolean);
