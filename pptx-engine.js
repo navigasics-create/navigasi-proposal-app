@@ -164,7 +164,7 @@ function computeAutoFontSizeForTexts(texts, rowCount, availableHeightEMU, colWid
     const totalWrapped = texts.reduce((sum, t) => sum + estimateWrappedLines(t, size, colWidthEMU), 0);
     const heightPt = availableHeightEMU / 12700;
     const usablePt = Math.max(heightPt - rowCount * (rowOverheadPt || 0), 20);
-    let newSize = usablePt / (Math.max(totalWrapped, 1) * 1.55);
+    let newSize = usablePt / (Math.max(totalWrapped, 1) * 1.75);
     newSize = Math.max(minPt, Math.min(maxPt, newSize));
     if (Math.abs(newSize - size) < 0.25) { size = newSize; break; }
     size = newSize;
@@ -184,18 +184,15 @@ function parseRundownLine(raw) {
   return { level, italic, text: line };
 }
 
-function buildTcPr(extraMarL, showBottomLine) {
-  const lnB = showBottomLine
-    ? `<a:lnB w="6350" cap="flat"><a:solidFill><a:srgbClr val="D6C7A1"/></a:solidFill></a:lnB>`
-    : `<a:lnB w="0"><a:noFill/></a:lnB>`;
-  return `<a:tcPr marL="${extraMarL || 0}" marR="0" marT="20000" marB="60000"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT>${lnB}<a:noFill/></a:tcPr>`;
+function buildTcPr(extraMarL) {
+  return `<a:tcPr marL="${extraMarL || 0}" marR="0" marT="20000" marB="60000"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="0"><a:noFill/></a:lnB><a:noFill/></a:tcPr>`;
 }
 
 function buildRun(text, sz, italic) {
   return `<a:r><a:rPr sz="${sz}" b="1" i="${italic ? 1 : 0}"><a:solidFill><a:srgbClr val="${RUNDOWN_COLOR}"/></a:solidFill><a:latin typeface="Calibri"/></a:rPr><a:t>${escapeXml(text)}</a:t></a:r>`;
 }
 
-function buildDescCell(lines, sz, nested, showBottomLine) {
+function buildDescCell(lines, sz, nested) {
   let paras = '';
   lines.forEach((raw, i) => {
     const { level, italic, text } = parseRundownLine(raw);
@@ -204,11 +201,15 @@ function buildDescCell(lines, sz, nested, showBottomLine) {
     const pPr = `<a:pPr${marL ? ` marL="${marL}" indent="0"` : ''}><a:lnSpc><a:spcPct val="100000"/></a:lnSpc><a:spcBef><a:spcPts val="${spcBef}"/></a:spcBef></a:pPr>`;
     paras += `<a:p>${pPr}${buildRun(text, sz, italic)}</a:p>`;
   });
-  return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/>${paras}</a:txBody>${buildTcPr(0, showBottomLine)}</a:tc>`;
+  return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/>${paras}</a:txBody>${buildTcPr()}</a:tc>`;
 }
 
-function buildTimeCell(timeText, sz, extraMarL, showBottomLine) {
-  return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p>${buildRun(timeText, sz, false)}</a:p></a:txBody>${buildTcPr(extraMarL, showBottomLine)}</a:tc>`;
+function buildTimeCell(timeText, sz, extraMarL) {
+  return `<a:tc><a:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p>${buildRun(timeText, sz, false)}</a:p></a:txBody>${buildTcPr(extraMarL)}</a:tc>`;
+}
+
+function buildSeparatorLine(shapeId, x, y, width) {
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeId}" name="Sep ${shapeId}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="6350"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="D6C7A1"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
 }
 
 // availableHeightEMU: fixed box height to fill. sizeBounds: {min,max} in points.
@@ -225,16 +226,35 @@ function buildRundownTable(shapeId, x, y, width, rows, availableHeightEMU, sizeB
   const lineHeightPt = (sz / 100) * 1.5;
   const rowOverheadPt = 7;
   let totalHeightEMU = 0;
+  const rowHeights = rows.map(row => {
+    const lines = row.label.split('\n').map(l => l.trim()).filter(Boolean);
+    const visualLineCount = lines.reduce((sum, raw) => {
+      const { text } = parseRundownLine(raw);
+      return sum + estimateWrappedLines(text, sz / 100, descColWidth);
+    }, 0);
+    return Math.round((visualLineCount * lineHeightPt + rowOverheadPt) * 12700);
+  });
+
   const trs = rows.map((row, idx) => {
     const timeText = row.time2 ? `${row.time1}-${row.time2}` : row.time1;
     const lines = row.label.split('\n').map(l => l.trim()).filter(Boolean);
-    const rowH = Math.round((lines.length * lineHeightPt + rowOverheadPt) * 12700);
-    totalHeightEMU += rowH;
-    const showLine = idx < rows.length - 1;
-    return `<a:tr h="${rowH}">${buildTimeCell(timeText, sz, timeMarL, showLine)}${buildDescCell(lines, sz, nested, showLine)}</a:tr>`;
+    totalHeightEMU += rowHeights[idx];
+    return `<a:tr h="${rowHeights[idx]}">${buildTimeCell(timeText, sz, timeMarL)}${buildDescCell(lines, sz, nested)}</a:tr>`;
   }).join('');
 
-  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${shapeId}" name="Table ${shapeId}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${totalHeightEMU}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="0" bandRow="0"/><a:tblGrid><a:gridCol w="${TIME_COL_W}"/><a:gridCol w="${width - TIME_COL_W}"/></a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  const tableXml = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${shapeId}" name="Table ${shapeId}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${width}" cy="${totalHeightEMU}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="0" bandRow="0"/><a:tblGrid><a:gridCol w="${TIME_COL_W}"/><a:gridCol w="${width - TIME_COL_W}"/></a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+
+  // separator lines as independent shapes, placed at each row boundary (except after the last row)
+  let cumulative = 0;
+  let linesXml = '';
+  rowHeights.forEach((h, idx) => {
+    cumulative += h;
+    if (idx < rowHeights.length - 1) {
+      linesXml += buildSeparatorLine(shapeId * 100 + idx, x, y + cumulative, width);
+    }
+  });
+
+  return tableXml + linesXml;
 }
 
 function removeShapeByPos(xml, offX, offY) {
