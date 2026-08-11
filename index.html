@@ -133,7 +133,7 @@ Standar P3K</textarea>
         <button class="secondary-btn full" onclick="loadMaster('rundown')">Terapkan Master Terpilih</button>
         <label style="margin-top:12px">💾 Simpan Susunan Sekarang sebagai Master</label>
         <div class="row2">
-          <input id="rd-master-name" placeholder="Nama master, cth: Rundown Offroad 1 Hari">
+          <input id="rd-master-name" placeholder="cth: PT Contoh Sukses / Offroad 1 Hari">
           <button class="secondary-btn" onclick="saveMaster('rundown')">Simpan</button>
         </div>
       </div>
@@ -166,7 +166,7 @@ Standar P3K</textarea>
         <button class="secondary-btn full" onclick="loadMaster('games')">Terapkan Master Terpilih</button>
         <label style="margin-top:12px">💾 Simpan Susunan Sekarang sebagai Master</label>
         <div class="row2">
-          <input id="gm-master-name" placeholder="Nama master, cth: Games Team Building Standar">
+          <input id="gm-master-name" placeholder="cth: PT Contoh Sukses / Games Team Building">
           <button class="secondary-btn" onclick="saveMaster('games')">Simpan</button>
         </div>
       </div>
@@ -219,8 +219,7 @@ function getAccessToken() {
   });
 }
 
-const MASTER_PREFIX = { rundown: '[RundownAcara]', games: '[RundownGames]' };
-const MASTER_FOLDER_NAME = 'Master Roundown Activity';
+const MASTER_FOLDER_NAMES = { rundown: 'Master Roundown Acara', games: 'Master Roundown Games' };
 const PROPOSAL_FOLDER_NAME = 'Navigasi Proposal Generator';
 const folderIdCache = {};
 
@@ -246,7 +245,7 @@ async function getOrCreateFolder(token, folderName) {
   folderIdCache[folderName] = created.id;
   return folderIdCache[folderName];
 }
-const getMasterFolderId = (token) => getOrCreateFolder(token, MASTER_FOLDER_NAME);
+const getMasterFolderId = (token, type) => getOrCreateFolder(token, MASTER_FOLDER_NAMES[type]);
 const getProposalFolderId = (token) => getOrCreateFolder(token, PROPOSAL_FOLDER_NAME);
 
 async function saveMaster(type) {
@@ -255,11 +254,11 @@ async function saveMaster(type) {
   if (!name) { alert('Isi dulu nama master-nya.'); return; }
   try {
     const token = await getAccessToken();
-    const folderId = await getMasterFolderId(token);
+    const folderId = await getMasterFolderId(token, type);
     const payload = type === 'rundown'
       ? { left: state.rdLeft, right: state.rdRight }
       : { left: state.gmLeft, right: state.gmRight };
-    const fileName = `${MASTER_PREFIX[type]} ${name}.json`;
+    const fileName = `${name}.json`;
     const metadata = { name: fileName, mimeType: 'application/json', parents: [folderId] };
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -281,15 +280,15 @@ async function refreshMasterList(type) {
   const select = document.getElementById(selectId);
   try {
     const token = await getAccessToken();
-    const folderId = await getMasterFolderId(token);
-    const q = encodeURIComponent(`'${folderId}' in parents and name contains '${MASTER_PREFIX[type]}' and trashed = false`);
+    const folderId = await getMasterFolderId(token, type);
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
       headers: { Authorization: 'Bearer ' + token },
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     select.innerHTML = '<option value="">— pilih master —</option>' +
-      data.files.map(f => `<option value="${f.id}">${f.name.replace(MASTER_PREFIX[type], '').replace('.json', '').trim()}</option>`).join('');
+      data.files.map(f => `<option value="${f.id}">${f.name.replace(/\.json$/, '')}</option>`).join('');
   } catch (err) {
     alert('Gagal ambil daftar master: ' + err.message);
   }
