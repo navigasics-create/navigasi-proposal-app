@@ -317,7 +317,7 @@ function buildAddSlideGridPositions(n, cols) {
   const positions = [];
   for (let i = 0; i < n; i++) {
     const r = Math.floor(i / cols), c = i % cols;
-    positions.push({ x: margin + c * (w + gap), y: 1000000 + r * (h + gap), w, h });
+    positions.push({ x: margin + c * (w + gap), y: 1300000 + r * (h + gap), w, h });
   }
   return positions;
 }
