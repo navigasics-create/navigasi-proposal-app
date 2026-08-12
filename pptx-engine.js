@@ -134,9 +134,10 @@ async function editSlide5Meals(zip, items) { return editSlide5List(zip, 1241, it
 async function editSlide5Fasilitas(zip, items) { return editSlide5List(zip, 1242, items); }
 
 async function editSlide5Photos(zip, photos) {
-  // photos: array of up to 4 {bytes, ext}
-  const rIds = ['rId3', 'rId4', 'rId5', 'rId6'];
-  for (let i = 0; i < Math.min(photos.length, 4); i++) {
+  // photos: array of up to 5 {bytes, ext} — first 4 fill the corner frames,
+  // the 5th (if present) fills the centered/front photo.
+  const rIds = ['rId3', 'rId4', 'rId5', 'rId6', 'rId7'];
+  for (let i = 0; i < Math.min(photos.length, 5); i++) {
     await swapImage(zip, 5, rIds[i], photos[i].bytes, photos[i].ext);
   }
 }
@@ -305,10 +306,11 @@ async function editSlide8Photos(zip, photos) {
 }
 
 // --- Additional slides (Penginapan / Transportasi / Entertainment, etc.) ---
-// Each entry: { title, note, photos: [{bytes, ext}, ...] }
+// Each entry: { categoryLabel, venueName, note, photos: [{bytes, ext}, ...] }
+// Title renders as two lines: categoryLabel (big) on top, venueName (smaller) directly below.
 const ADD_SLIDE_TITLE_COLOR = 'AB8645';
 
-function buildAddSlideGridPositions(n, cols) {
+function buildAddSlideGridPositions(n, cols, startY) {
   cols = cols || 3;
   const margin = 372000, gap = 150000;
   const totalW = 9144000 - 2 * margin;
@@ -317,25 +319,27 @@ function buildAddSlideGridPositions(n, cols) {
   const positions = [];
   for (let i = 0; i < n; i++) {
     const r = Math.floor(i / cols), c = i % cols;
-    positions.push({ x: margin + c * (w + gap), y: 1300000 + r * (h + gap), w, h });
+    positions.push({ x: margin + c * (w + gap), y: startY + r * (h + gap), w, h });
   }
   return positions;
 }
 
-function buildAdditionalSlideXml(title, note, picSpecs) {
+function buildAdditionalSlideXml(categoryLabel, venueName, note, picSpecs) {
   let picsXml = '';
   picSpecs.forEach((p, i) => {
     const shapeId = 9500 + i;
     picsXml += `<p:pic><p:nvPicPr><p:cNvPr id="${shapeId}" name="AddPhoto${shapeId}"/><p:cNvPicPr preferRelativeResize="0"><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${p.rid}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${p.x}" y="${p.y}"/><a:ext cx="${p.w}" cy="${p.h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
   });
 
-  const titleXml = `<p:sp><p:nvSpPr><p:cNvPr id="9600" name="AddTitle"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="638423"/><a:ext cx="9144000" cy="489900"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en" sz="2200" b="1" u="sng" dirty="0"><a:solidFill><a:srgbClr val="${ADD_SLIDE_TITLE_COLOR}"/></a:solidFill></a:rPr><a:t>${escapeXml(title)}</a:t></a:r></a:p></p:txBody></p:sp>`;
+  const titleXml = `<p:sp><p:nvSpPr><p:cNvPr id="9600" name="AddTitle"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="700000"/><a:ext cx="9144000" cy="430000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en" sz="2200" b="1" u="sng" dirty="0"><a:solidFill><a:srgbClr val="${ADD_SLIDE_TITLE_COLOR}"/></a:solidFill></a:rPr><a:t>${escapeXml(categoryLabel)}</a:t></a:r></a:p></p:txBody></p:sp>`;
+
+  const subtitleXml = venueName ? `<p:sp><p:nvSpPr><p:cNvPr id="9604" name="AddVenueName"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="1160000"/><a:ext cx="9144000" cy="340000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en" sz="1400" b="1" dirty="0"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:rPr><a:t>${escapeXml(venueName)}</a:t></a:r></a:p></p:txBody></p:sp>` : '';
 
   const noteXml = note ? `<p:sp><p:nvSpPr><p:cNvPr id="9601" name="AddNote"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="372000" y="4400000"/><a:ext cx="8400000" cy="350000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" anchor="t"/><a:lstStyle/><a:p><a:pPr algn="l"/><a:r><a:rPr lang="en" sz="1100" i="1" dirty="0"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:rPr><a:t>${escapeXml(note)}</a:t></a:r></a:p></p:txBody></p:sp>` : '';
 
   const footerXml = `<p:sp><p:nvSpPr><p:cNvPr id="9602" name="AddYear"/><p:cNvSpPr txBox="1"><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="subTitle" idx="1"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="366100" y="4773588"/><a:ext cx="3539400" cy="282600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="l"/><a:r><a:rPr lang="en" sz="1000" b="1"/><a:t>2026</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="9603" name="AddWeb"/><p:cNvSpPr txBox="1"><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="subTitle" idx="2"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="5251900" y="4773588"/><a:ext cx="3539400" cy="282600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="r"/><a:r><a:rPr lang="en" sz="1000" b="1"/><a:t>Navigasi Outdoor Activity.Com</a:t></a:r></a:p></p:txBody></p:sp>`;
 
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name="AddSlideRoot"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>${footerXml}${titleXml}${picsXml}${noteXml}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name="AddSlideRoot"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>${footerXml}${titleXml}${subtitleXml}${picsXml}${noteXml}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
 }
 
 async function addAdditionalSlides(zip, additionalSlides) {
@@ -354,13 +358,19 @@ async function addAdditionalSlides(zip, additionalSlides) {
     const slidePath = `ppt/slides/slide${slideNum}.xml`;
     const relsPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`;
 
+    // Backward compatible: accept either the new {categoryLabel, venueName} shape
+    // or the old combined {title} shape (treated as categoryLabel with no venue line).
+    const categoryLabel = entry.categoryLabel !== undefined ? entry.categoryLabel : (entry.title || '');
+    const venueName = entry.venueName || '';
+
     const photos = entry.photos || [];
-    const positions = buildAddSlideGridPositions(photos.length, 3);
+    const startY = venueName ? 1600000 : 1380000; // extra room when the venue-name line is shown
+    const positions = buildAddSlideGridPositions(photos.length, 3, startY);
     const picSpecs = photos.map((photo, i) => ({
       rid: `rId${100 + i}`, x: positions[i].x, y: positions[i].y, w: positions[i].w, h: positions[i].h,
     }));
 
-    const slideXml = buildAdditionalSlideXml(entry.title, entry.note || '', picSpecs);
+    const slideXml = buildAdditionalSlideXml(categoryLabel, venueName, entry.note || '', picSpecs);
 
     let relEntries = photos.map((photo, i) => {
       const mediaName = `add_slide_${slideNum}_photo_${i}_${Date.now()}.${photo.ext}`;

@@ -48,6 +48,9 @@
   .log .ok{color:#7fd99a;} .log .err{color:#ff8a8a;}
   .col-block{margin-bottom:14px;}
   .col-block h3{font-size:12.5px; color:var(--muted); margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;}
+  .add-category-block{border:1.5px solid var(--line); border-radius:9px; padding:10px 12px; margin-bottom:10px; background:#fff;}
+  .add-category-title{font-size:13px; font-weight:700; color:var(--ink); margin-bottom:8px;}
+  .add-category-empty{font-size:12px; color:var(--muted); font-style:italic;}
   .master-box{background:var(--cream); border:1px dashed var(--gold); border-radius:8px; padding:12px; margin-bottom:16px;}
   .master-box label{font-size:11.5px;}
   .secondary-btn{background:var(--ink-2); color:#fff; border:none; padding:9px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;}
@@ -112,7 +115,7 @@
       <h3 style="margin:14px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase;">Program Utama</h3>
       <div id="f-photo-folder-list-main" class="chip-lib"></div>
       <h3 style="margin:14px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase;">Program Tambahan (jadi slide terpisah)</h3>
-      <p class="hint" style="margin-top:0">Tiap yang dicentang di sini otomatis nambah 1 slide baru khusus foto item itu.</p>
+      <p class="hint" style="margin-top:0">Tiap kategori (Penginapan/Transportasi/Entertainment) dipecah per venue. Centang venue mana saja yang mau ditawarkan — 1 venue = 1 slide baru, judulnya otomatis "Kategori - Nama Venue".</p>
       <div id="f-photo-folder-list-add" class="chip-lib"></div>
       <div id="f-additional-notes"></div>
       <p class="hint" style="margin-top:8px">Belum ada foldernya? Klik "Setup Semua Folder Sekarang" di atas dulu, upload foto ke sub-foldernya, baru klik Muat Daftar lagi.</p>
@@ -310,11 +313,22 @@ async function setupAllFolders() {
 }
 
 let selectedPhotoFolders = []; // main program folders: [{id, name}]
-let selectedAdditionalFolders = []; // additional folders: [{id, name}]
-let additionalNotes = {}; // folderId -> note text
+let selectedAdditionalFolders = []; // legacy (kept only for old-draft compatibility, no longer used to render)
+let selectedAdditionalVenues = []; // [{id, name, categoryLabel, categoryFolderId}]
+let additionalNotes = {}; // venueId (or legacy folderId) -> note text
 
 function isAdditionalFolder(name) {
   return name.startsWith('Program Tambahan');
+}
+
+async function listSubfolders(token, parentId) {
+  const q = encodeURIComponent(`'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.files || [];
 }
 
 async function refreshPhotoFolders() {
@@ -334,10 +348,63 @@ async function refreshPhotoFolders() {
     const mainFolders = data.files.filter(f => !isAdditionalFolder(f.name));
     const addFolders = data.files.filter(f => isAdditionalFolder(f.name));
     renderPhotoFolderChips('f-photo-folder-list-main', mainFolders, selectedPhotoFolders, togglePhotoFolder);
-    renderPhotoFolderChips('f-photo-folder-list-add', addFolders, selectedAdditionalFolders, toggleAdditionalFolder);
+    await renderAdditionalCategoriesWithVenues(token, addFolders);
   } catch (err) {
     alert('Gagal ambil daftar folder foto: ' + err.message);
   }
+}
+
+// Renders each "Program Tambahan - X" category as a block, with checkboxes for each
+// venue sub-folder inside it (e.g. Hotel Grand Nirwana, Villa Biru, ...). If a category
+// has no sub-folders yet (old flat structure), falls back to treating the category folder
+// itself as a single selectable "venue" so nothing breaks for folders not yet restructured.
+async function renderAdditionalCategoriesWithVenues(token, addFolders) {
+  const container = document.getElementById('f-photo-folder-list-add');
+  if (addFolders.length === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = '<p class="hint">Memuat daftar venue...</p>';
+
+  const blocks = [];
+  for (const cat of addFolders) {
+    const label = cat.name.replace(/^Program Tambahan - /, '');
+    let venues = [];
+    try {
+      venues = await listSubfolders(token, cat.id);
+    } catch (err) {
+      venues = [];
+    }
+
+    let inner;
+    if (venues.length === 0) {
+      // Fallback: no sub-folder venues — use the category folder itself as one venue.
+      const checked = selectedAdditionalVenues.some(s => s.id === cat.id);
+      inner = `<label class="photo-folder-chip ${checked ? 'selected' : ''}">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleAdditionalVenue('${cat.id}','','${escapeJsStr(label)}','${cat.id}', this)">
+        ${escapeHtmlStr(label)} (langsung dari folder ini)
+      </label>`;
+    } else {
+      inner = venues.map(v => {
+        const checked = selectedAdditionalVenues.some(s => s.id === v.id);
+        return `<label class="photo-folder-chip ${checked ? 'selected' : ''}">
+          <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleAdditionalVenue('${v.id}','${escapeJsStr(v.name)}','${escapeJsStr(label)}','${cat.id}', this)">
+          ${escapeHtmlStr(v.name)}
+        </label>`;
+      }).join('');
+    }
+
+    blocks.push(`<div class="add-category-block">
+      <div class="add-category-title">${escapeHtmlStr(label)}</div>
+      <div class="chip-lib">${inner}</div>
+    </div>`);
+  }
+  container.innerHTML = blocks.join('');
+}
+
+function escapeJsStr(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function escapeHtmlStr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function renderPhotoFolderChips(containerId, files, selectedList, toggleFn) {
@@ -360,13 +427,13 @@ function togglePhotoFolder(id, name, checkboxEl) {
   saveDraft();
 }
 
-function toggleAdditionalFolder(id, name, checkboxEl) {
-  const idx = selectedAdditionalFolders.findIndex(s => s.id === id);
+function toggleAdditionalVenue(id, name, categoryLabel, categoryFolderId, checkboxEl) {
+  const idx = selectedAdditionalVenues.findIndex(s => s.id === id);
   if (idx >= 0) {
-    selectedAdditionalFolders.splice(idx, 1);
+    selectedAdditionalVenues.splice(idx, 1);
     delete additionalNotes[id];
   } else {
-    selectedAdditionalFolders.push({ id, name });
+    selectedAdditionalVenues.push({ id, name, categoryLabel, categoryFolderId });
   }
   checkboxEl.closest('.photo-folder-chip').classList.toggle('selected', idx < 0);
   renderAdditionalNotes();
@@ -375,12 +442,12 @@ function toggleAdditionalFolder(id, name, checkboxEl) {
 
 function renderAdditionalNotes() {
   const container = document.getElementById('f-additional-notes');
-  container.innerHTML = selectedAdditionalFolders.map(f => {
-    const label = f.name.replace(/^Program Tambahan - /, '');
+  container.innerHTML = selectedAdditionalVenues.map(v => {
+    const title = v.name ? `${v.categoryLabel} - ${v.name}` : v.categoryLabel;
     return `<div style="margin-top:8px;">
-      <label>Catatan singkat untuk "${label}"</label>
-      <input value="${(additionalNotes[f.id] || '').replace(/"/g, '&quot;')}" placeholder="cth: Tersedia berbagai pilihan sesuai kebutuhan rombongan."
-        oninput="additionalNotes['${f.id}']=this.value; saveDraft();">
+      <label>Catatan singkat untuk "${title}"</label>
+      <input value="${(additionalNotes[v.id] || '').replace(/"/g, '&quot;')}" placeholder="cth: Tersedia berbagai pilihan sesuai kebutuhan rombongan."
+        oninput="additionalNotes['${v.id}']=this.value; saveDraft();">
     </div>`;
   }).join('');
 }
@@ -591,7 +658,7 @@ function saveDraft() {
       fasilitas: document.getElementById('f-fasilitas').value,
       state: state,
       selectedPhotoFolders: (typeof selectedPhotoFolders !== 'undefined') ? selectedPhotoFolders : [],
-      selectedAdditionalFolders: (typeof selectedAdditionalFolders !== 'undefined') ? selectedAdditionalFolders : [],
+      selectedAdditionalVenues: (typeof selectedAdditionalVenues !== 'undefined') ? selectedAdditionalVenues : [],
       additionalNotes: (typeof additionalNotes !== 'undefined') ? additionalNotes : {},
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -622,8 +689,8 @@ function restoreDraft() {
     if (draft.selectedPhotoFolders && typeof selectedPhotoFolders !== 'undefined') {
       selectedPhotoFolders = draft.selectedPhotoFolders;
     }
-    if (draft.selectedAdditionalFolders && typeof selectedAdditionalFolders !== 'undefined') {
-      selectedAdditionalFolders = draft.selectedAdditionalFolders;
+    if (draft.selectedAdditionalVenues && typeof selectedAdditionalVenues !== 'undefined') {
+      selectedAdditionalVenues = draft.selectedAdditionalVenues;
     }
     if (draft.additionalNotes && typeof additionalNotes !== 'undefined') {
       additionalNotes = draft.additionalNotes;
@@ -785,7 +852,7 @@ async function runGenerate(token) {
 
     if (selectedPhotoFolders.length > 0) {
       log(`Mengambil foto slide 5 dari ${selectedPhotoFolders.length} program utama...`);
-      const slide5Photos = await fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 4);
+      const slide5Photos = await fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 5);
       if (slide5Photos.length) data.slide5Photos = slide5Photos;
       log('✅ Foto slide 5 diambil.', 'ok');
 
@@ -795,13 +862,17 @@ async function runGenerate(token) {
       log(`✅ Foto slide 8 diambil (${slide8Photos.length}/12).`, 'ok');
     }
 
-    if (selectedAdditionalFolders.length > 0) {
-      log(`Menyiapkan ${selectedAdditionalFolders.length} slide additional...`);
+    if (selectedAdditionalVenues.length > 0) {
+      log(`Menyiapkan ${selectedAdditionalVenues.length} slide additional (per venue)...`);
       const additionalSlides = [];
-      for (const folder of selectedAdditionalFolders) {
-        const photos = await fetchPhotosFromFolder(token, folder.id, 6);
-        const label = folder.name.replace(/^Program Tambahan - /, '');
-        additionalSlides.push({ title: label, note: additionalNotes[folder.id] || '', photos });
+      for (const venue of selectedAdditionalVenues) {
+        const photos = await fetchPhotosFromFolder(token, venue.id, 6);
+        additionalSlides.push({
+          categoryLabel: venue.categoryLabel,
+          venueName: venue.name || '',
+          note: additionalNotes[venue.id] || '',
+          photos,
+        });
       }
       data.additionalSlides = additionalSlides;
       log(`✅ ${additionalSlides.length} slide additional siap ditambahkan.`, 'ok');
