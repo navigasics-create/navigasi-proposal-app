@@ -385,6 +385,37 @@ function renderAdditionalNotes() {
   }).join('');
 }
 
+function resizePhotoBytes(bytes, maxDim) {
+  return new Promise((resolve) => {
+    try {
+      const blob = new Blob([bytes]);
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (Math.max(width, height) > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((outBlob) => {
+          if (!outBlob) { resolve({ bytes, ext: 'jpg' }); return; }
+          outBlob.arrayBuffer().then(buf => resolve({ bytes: new Uint8Array(buf), ext: 'jpg' }));
+        }, 'image/jpeg', 0.82);
+      };
+      img.onerror = () => resolve({ bytes, ext: 'jpg' }); // fallback: use original if decode fails
+      img.src = url;
+    } catch (e) {
+      resolve({ bytes, ext: 'jpg' });
+    }
+  });
+}
+
 function extFromMime(mime) {
   if (mime.includes('png')) return 'png';
   if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg';
@@ -409,8 +440,9 @@ async function fetchPhotosFromFolder(token, folderId, count) {
       headers: { Authorization: 'Bearer ' + token },
     });
     if (!imgRes.ok) continue;
-    const bytes = new Uint8Array(await imgRes.arrayBuffer());
-    photos.push({ bytes, ext: extFromMime(f.mimeType) });
+    const rawBytes = new Uint8Array(await imgRes.arrayBuffer());
+    const resized = await resizePhotoBytes(rawBytes, 1400);
+    photos.push(resized);
   }
   return photos;
 }
@@ -771,7 +803,10 @@ async function runGenerate(token) {
     const pdfRes = await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/export?mimeType=application/pdf`, {
       headers: { Authorization: 'Bearer ' + token },
     });
-    if (!pdfRes.ok) throw new Error('Export PDF gagal.');
+    if (!pdfRes.ok) {
+      const errText = await pdfRes.text();
+      throw new Error(`Export PDF gagal (${pdfRes.status}): ${errText}`);
+    }
     const pdfBlob = await pdfRes.blob();
     log('✅ PDF diterima. Mendownload...', 'ok');
 
