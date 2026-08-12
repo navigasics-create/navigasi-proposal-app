@@ -424,25 +424,50 @@ function extFromMime(mime) {
   return 'jpg';
 }
 
-async function fetchPhotosFromFolder(token, folderId, count) {
+const folderFileListCache = {};
+
+async function listImagesInFolder(token, folderId) {
+  if (folderFileListCache[folderId]) return folderFileListCache[folderId];
   const q = encodeURIComponent(`'${folderId}' in parents and mimeType contains 'image/' and trashed = false`);
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&orderBy=name`, {
     headers: { Authorization: 'Bearer ' + token },
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
-  const files = data.files || [];
+  folderFileListCache[folderId] = data.files || [];
+  return folderFileListCache[folderId];
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function fetchPhotosFromFolder(token, folderId, count) {
+  const files = await listImagesInFolder(token, folderId);
   if (files.length === 0) return [];
   const photos = [];
   for (let i = 0; i < count; i++) {
     const f = files[i % files.length]; // cycle through if fewer photos than slots
-    const imgRes = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
-      headers: { Authorization: 'Bearer ' + token },
-    });
-    if (!imgRes.ok) continue;
-    const rawBytes = new Uint8Array(await imgRes.arrayBuffer());
-    const resized = await resizePhotoBytes(rawBytes, 1400);
-    photos.push(resized);
+    let attempt = 0;
+    let success = false;
+    while (attempt < 2 && !success) {
+      attempt++;
+      try {
+        const imgRes = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!imgRes.ok) throw new Error('status ' + imgRes.status);
+        const rawBytes = new Uint8Array(await imgRes.arrayBuffer());
+        const resized = await resizePhotoBytes(rawBytes, 1400);
+        photos.push(resized);
+        success = true;
+      } catch (err) {
+        if (attempt >= 2) {
+          console.warn(`Gagal ambil foto "${f.name}" setelah 2x percobaan:`, err.message);
+        } else {
+          await sleep(300); // brief pause before retry
+        }
+      }
+    }
+    await sleep(80); // small pacing gap between requests to avoid rate limits
   }
   return photos;
 }
@@ -457,8 +482,12 @@ async function fetchPhotosFromMultipleFolders(token, folders, totalSlots) {
     if (remainder > 0) remainder--;
     return base + extra;
   });
-  const results = await Promise.all(folders.map((f, i) => fetchPhotosFromFolder(token, f.id, shares[i])));
-  return results.flat();
+  let allPhotos = [];
+  for (let i = 0; i < folders.length; i++) {
+    const photos = await fetchPhotosFromFolder(token, folders[i].id, shares[i]);
+    allPhotos = allPhotos.concat(photos);
+  }
+  return allPhotos;
 }
 
 async function saveMaster(type) {
@@ -755,21 +784,22 @@ async function runGenerate(token) {
     log('✅ Template diambil.', 'ok');
 
     if (selectedPhotoFolders.length > 0) {
-      log(`Mengambil foto dari ${selectedPhotoFolders.length} program utama (dibagi rata)...`);
-      const [slide5Photos, slide8Photos] = await Promise.all([
-        fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 4),
-        fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 12),
-      ]);
+      log(`Mengambil foto slide 5 dari ${selectedPhotoFolders.length} program utama...`);
+      const slide5Photos = await fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 4);
       if (slide5Photos.length) data.slide5Photos = slide5Photos;
+      log('✅ Foto slide 5 diambil.', 'ok');
+
+      log('Mengambil foto slide 8...');
+      const slide8Photos = await fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 12);
       if (slide8Photos.length) data.slide8Photos = slide8Photos;
-      log(`✅ ${slide5Photos.length ? 'Foto program utama diambil.' : 'Folder kosong, foto default dipakai.'}`, 'ok');
+      log(`✅ Foto slide 8 diambil (${slide8Photos.length}/12).`, 'ok');
     }
 
     if (selectedAdditionalFolders.length > 0) {
       log(`Menyiapkan ${selectedAdditionalFolders.length} slide additional...`);
       const additionalSlides = [];
       for (const folder of selectedAdditionalFolders) {
-        const photos = await fetchPhotosFromFolder(token, folder.id, 4);
+        const photos = await fetchPhotosFromFolder(token, folder.id, 6);
         const label = folder.name.replace(/^Program Tambahan - /, '');
         additionalSlides.push({ title: label, note: additionalNotes[folder.id] || '', photos });
       }
