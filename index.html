@@ -39,6 +39,9 @@
   .add-row-btn{width:100%; padding:9px; border:1.5px dashed var(--gold); border-radius:7px; background:transparent; color:var(--ink-2); font-weight:600; font-size:12.5px; cursor:pointer; margin-top:4px;}
   .chip-lib{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
   .chip{font-size:11px; background:var(--cream); border:1px solid var(--line); color:var(--ink-2); padding:6px 8px; border-radius:99px; cursor:pointer; font-weight:600;}
+  .photo-folder-chip{font-size:12.5px; background:#fff; border:1.5px solid var(--line); color:var(--ink-2); padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:6px;}
+  .photo-folder-chip.selected{border-color:var(--gold); background:var(--cream); color:var(--ink);}
+  .photo-folder-chip input{width:auto; margin:0;}
   .primary-btn{width:100%; padding:15px; background:var(--ink); color:#fff; border:none; border-radius:8px; font-size:14.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;}
   .primary-btn:disabled{opacity:0.6;}
   .log{background:var(--ink); color:#cfe0d5; border-radius:8px; padding:12px; margin-top:14px; font-size:11.5px; font-family:monospace; white-space:pre-wrap; max-height:220px; overflow-y:auto;}
@@ -73,6 +76,7 @@
   <div class="panel active" id="panel-client">
     <div class="card">
       <h2>Data Client</h2>
+      <p class="hint">💾 Data di tab ini otomatis tersimpan di HP kamu — aman walau ke-refresh. <a href="#" onclick="clearDraft(); return false;" style="color:var(--danger); font-weight:600;">Mulai baru / hapus draft</a></p>
       <label>Nama Client / Perusahaan</label>
       <input id="f-name" value="">
       <div class="row2">
@@ -95,6 +99,18 @@
         <option value="Harga belum termasuk PPN & PPh (jika diperlukan faktur pajak).">Belum termasuk PPN & PPh</option>
         <option value="Harga sudah termasuk PPN & PPh.">Sudah termasuk PPN & PPh</option>
       </select>
+    </div>
+    <div class="card">
+      <h2>Setup Folder Drive</h2>
+      <p class="hint">Jalankan sekali di awal — otomatis bikin 1 folder induk "Navigasi Web App" di Drive kamu, isinya semua folder yang dipakai app ini (Master Rundown, Riwayat Proposal, Photo Library 11 program).</p>
+      <button type="button" class="secondary-btn full" onclick="setupAllFolders()">🗂 Setup Semua Folder Sekarang</button>
+    </div>
+    <div class="card">
+      <h2>Foto Activity (Slide 5 & 8)</h2>
+      <p class="hint">Centang activity yang dipesan client (boleh lebih dari satu, foto akan dibagi rata). Nama file di dalam folder bebas — yang penting fotonya ada di folder yang tepat.</p>
+      <button type="button" class="secondary-btn full" onclick="refreshPhotoFolders()">🔄 Muat Daftar Folder Activity</button>
+      <div id="f-photo-folder-list" class="chip-lib"></div>
+      <p class="hint" style="margin-top:8px">Belum ada foldernya? Buat & upload foto dulu ke Drive kamu, di folder <b>"Navigasi Photo Library" → [nama activity]</b>, baru klik Muat Daftar lagi.</p>
     </div>
     <div class="card">
       <h2>Fasilitas yang Didapat (Slide 5)</h2>
@@ -219,34 +235,160 @@ function getAccessToken() {
   });
 }
 
+const ROOT_FOLDER_NAME = 'Navigasi Web App';
 const MASTER_FOLDER_NAMES = { rundown: 'Master Roundown Acara', games: 'Master Roundown Games' };
 const PROPOSAL_FOLDER_NAME = 'Navigasi Proposal Generator';
+const PHOTO_LIBRARY_ROOT = 'Navigasi Photo Library';
+const PROGRAM_LIST = [
+  'Teambuilding', 'Amazing Race', 'Treasure Hunt', 'Offroad', 'Paintball', 'Rafting', 'Hiking', 'ATV',
+  'Program Tambahan - Penginapan', 'Program Tambahan - Transportasi', 'Program Tambahan - Entertainment Electone',
+];
 const folderIdCache = {};
 
-async function getOrCreateFolder(token, folderName) {
-  if (folderIdCache[folderName]) return folderIdCache[folderName];
-  const q = encodeURIComponent(`name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+async function getOrCreateFolder(token, folderName, parentId) {
+  const cacheKey = (parentId || 'root') + '/' + folderName;
+  if (folderIdCache[cacheKey]) return folderIdCache[cacheKey];
+  const parentClause = parentId ? `'${parentId}' in parents and ` : '';
+  const q = encodeURIComponent(`${parentClause}name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
     headers: { Authorization: 'Bearer ' + token },
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   if (data.files && data.files.length > 0) {
-    folderIdCache[folderName] = data.files[0].id;
-    return folderIdCache[folderName];
+    folderIdCache[cacheKey] = data.files[0].id;
+    return folderIdCache[cacheKey];
   }
+  const body = { name: folderName, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) body.parents = [parentId];
   const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder' }),
+    body: JSON.stringify(body),
   });
   if (!createRes.ok) throw new Error(await createRes.text());
   const created = await createRes.json();
-  folderIdCache[folderName] = created.id;
-  return folderIdCache[folderName];
+  folderIdCache[cacheKey] = created.id;
+  return folderIdCache[cacheKey];
 }
-const getMasterFolderId = (token, type) => getOrCreateFolder(token, MASTER_FOLDER_NAMES[type]);
-const getProposalFolderId = (token) => getOrCreateFolder(token, PROPOSAL_FOLDER_NAME);
+
+const getRootFolderId = (token) => getOrCreateFolder(token, ROOT_FOLDER_NAME, null);
+const getMasterFolderId = async (token, type) => {
+  const rootId = await getRootFolderId(token);
+  return getOrCreateFolder(token, MASTER_FOLDER_NAMES[type], rootId);
+};
+const getProposalFolderId = async (token) => {
+  const rootId = await getRootFolderId(token);
+  return getOrCreateFolder(token, PROPOSAL_FOLDER_NAME, rootId);
+};
+const getPhotoLibraryRootId = async (token) => {
+  const rootId = await getRootFolderId(token);
+  return getOrCreateFolder(token, PHOTO_LIBRARY_ROOT, rootId);
+};
+
+async function setupAllFolders() {
+  try {
+    const token = await getAccessToken();
+    const rootId = await getRootFolderId(token);
+    await getOrCreateFolder(token, MASTER_FOLDER_NAMES.rundown, rootId);
+    await getOrCreateFolder(token, MASTER_FOLDER_NAMES.games, rootId);
+    await getOrCreateFolder(token, PROPOSAL_FOLDER_NAME, rootId);
+    const photoRootId = await getOrCreateFolder(token, PHOTO_LIBRARY_ROOT, rootId);
+    for (const program of PROGRAM_LIST) {
+      await getOrCreateFolder(token, program, photoRootId);
+    }
+    alert('Selesai! Semua folder sudah dibuat rapi di dalam folder "Navigasi Web App" di Drive kamu, termasuk 11 folder program foto.');
+    refreshPhotoFolders();
+  } catch (err) {
+    alert('Gagal setup folder: ' + err.message);
+  }
+}
+
+let selectedPhotoFolders = []; // [{id, name}]
+
+async function refreshPhotoFolders() {
+  const container = document.getElementById('f-photo-folder-list');
+  try {
+    const token = await getAccessToken();
+    const rootId = await getPhotoLibraryRootId(token);
+    const q = encodeURIComponent(`'${rootId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.files.length === 0) {
+      container.innerHTML = '<p class="hint">Belum ada sub-folder activity.</p>';
+      alert('Folder "Navigasi Photo Library" sudah dibuat di Drive kamu, tapi belum ada sub-folder activity di dalamnya. Bikin dulu sub-foldernya (misal "Offroad", "Team Building"), upload foto, baru klik Muat Daftar lagi.');
+      return;
+    }
+    renderPhotoFolderChips(data.files);
+  } catch (err) {
+    alert('Gagal ambil daftar folder foto: ' + err.message);
+  }
+}
+
+function renderPhotoFolderChips(files) {
+  const container = document.getElementById('f-photo-folder-list');
+  container.innerHTML = files.map(f => {
+    const checked = selectedPhotoFolders.some(s => s.id === f.id);
+    return `<label class="photo-folder-chip ${checked ? 'selected' : ''}">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="togglePhotoFolder('${f.id}','${f.name.replace(/'/g, "\\'")}', this)">
+      ${f.name}
+    </label>`;
+  }).join('');
+}
+
+function togglePhotoFolder(id, name, checkboxEl) {
+  const idx = selectedPhotoFolders.findIndex(s => s.id === id);
+  if (idx >= 0) selectedPhotoFolders.splice(idx, 1);
+  else selectedPhotoFolders.push({ id, name });
+  checkboxEl.closest('.photo-folder-chip').classList.toggle('selected', idx < 0);
+}
+
+function extFromMime(mime) {
+  if (mime.includes('png')) return 'png';
+  if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg';
+  if (mime.includes('gif')) return 'gif';
+  if (mime.includes('webp')) return 'webp';
+  return 'jpg';
+}
+
+async function fetchPhotosFromFolder(token, folderId, count) {
+  const q = encodeURIComponent(`'${folderId}' in parents and mimeType contains 'image/' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&orderBy=name`, {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  const files = data.files || [];
+  if (files.length === 0) return [];
+  const photos = [];
+  for (let i = 0; i < count; i++) {
+    const f = files[i % files.length]; // cycle through if fewer photos than slots
+    const imgRes = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!imgRes.ok) continue;
+    const bytes = new Uint8Array(await imgRes.arrayBuffer());
+    photos.push({ bytes, ext: extFromMime(f.mimeType) });
+  }
+  return photos;
+}
+
+// Splits `totalSlots` as evenly as possible across N folders, then fetches each folder's share.
+async function fetchPhotosFromMultipleFolders(token, folders, totalSlots) {
+  if (!folders.length) return [];
+  const base = Math.floor(totalSlots / folders.length);
+  let remainder = totalSlots % folders.length;
+  const shares = folders.map(() => {
+    const extra = remainder > 0 ? 1 : 0;
+    if (remainder > 0) remainder--;
+    return base + extra;
+  });
+  const results = await Promise.all(folders.map((f, i) => fetchPhotosFromFolder(token, f.id, shares[i])));
+  return results.flat();
+}
 
 async function saveMaster(type) {
   const nameInput = document.getElementById(type === 'rundown' ? 'rd-master-name' : 'gm-master-name');
@@ -315,6 +457,7 @@ async function loadMaster(type) {
       renderRows('gmLeft'); renderRows('gmRight');
     }
     alert('Master berhasil dimuat, silakan cek & edit sebelum generate.');
+    saveDraft();
   } catch (err) {
     alert('Gagal memuat master: ' + err.message);
   }
@@ -331,11 +474,74 @@ document.querySelectorAll('.tab').forEach(t => {
 
 const state = { rdLeft: [], rdRight: [], gmLeft: [], gmRight: [] };
 
+const DRAFT_KEY = 'navigasiFormDraft';
+
+function saveDraft() {
+  try {
+    const draft = {
+      name: document.getElementById('f-name').value,
+      phone: document.getElementById('f-phone').value,
+      date: document.getElementById('f-date').value,
+      pax: document.getElementById('f-pax').value,
+      title: document.getElementById('f-title').value,
+      price: document.getElementById('f-price').value,
+      taxnote: document.getElementById('f-taxnote').value,
+      facilities: document.getElementById('f-facilities').value,
+      meals: document.getElementById('f-meals').value,
+      fasilitas: document.getElementById('f-fasilitas').value,
+      state: state,
+      selectedPhotoFolders: (typeof selectedPhotoFolders !== 'undefined') ? selectedPhotoFolders : [],
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch (e) { /* ignore quota errors */ }
+}
+
+function restoreDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    const draft = JSON.parse(raw);
+    document.getElementById('f-name').value = draft.name || '';
+    document.getElementById('f-phone').value = draft.phone || '';
+    document.getElementById('f-date').value = draft.date || '';
+    document.getElementById('f-pax').value = draft.pax || '';
+    document.getElementById('f-title').value = draft.title || '';
+    document.getElementById('f-price').value = draft.price || '';
+    if (draft.taxnote) document.getElementById('f-taxnote').value = draft.taxnote;
+    if (draft.facilities !== undefined) document.getElementById('f-facilities').value = draft.facilities;
+    if (draft.meals !== undefined) document.getElementById('f-meals').value = draft.meals;
+    if (draft.fasilitas !== undefined) document.getElementById('f-fasilitas').value = draft.fasilitas;
+    if (draft.state) {
+      state.rdLeft = draft.state.rdLeft || [];
+      state.rdRight = draft.state.rdRight || [];
+      state.gmLeft = draft.state.gmLeft || [];
+      state.gmRight = draft.state.gmRight || [];
+    }
+    if (draft.selectedPhotoFolders && typeof selectedPhotoFolders !== 'undefined') {
+      selectedPhotoFolders = draft.selectedPhotoFolders;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function clearDraft() {
+  if (!confirm('Yakin mau hapus semua isian sekarang dan mulai dari kosong? (Master rundown di Drive tidak terpengaruh, aman.)')) return;
+  localStorage.removeItem(DRAFT_KEY);
+  location.reload();
+}
+document.addEventListener('input', () => {
+  clearTimeout(saveDraftTimer);
+  saveDraftTimer = setTimeout(saveDraft, 400);
+});
+
 function addRow(key, time1 = '', time2 = '', label = '') {
   state[key].push({ time1, time2, label });
   renderRows(key);
+  saveDraft();
 }
-function removeRow(key, i) { state[key].splice(i, 1); renderRows(key); }
+function removeRow(key, i) { state[key].splice(i, 1); renderRows(key); saveDraft(); }
 
 function formatTimeInput(el) {
   let digits = el.value.replace(/\D/g, '').slice(0, 4);
@@ -396,10 +602,16 @@ function handleRowNav(e, el) {
   }
 }
 
-addRow('rdLeft', '09:00', '09:30', 'Peserta tiba\nToileting\nPreparation');
-addRow('rdRight', '13:00', '15:00', '1x Offroad Adventure');
-addRow('gmLeft', '09:00', '10:00', 'Opening Speech\n>*Ice Breaking*\n>>Saling Sapa');
-addRow('gmRight', '10:00', '11:30', '*Team Building*\n>Hitung Cepat');
+const hasDraft = restoreDraft();
+if (!hasDraft) {
+  addRow('rdLeft', '09:00', '09:30', 'Peserta tiba\nToileting\nPreparation');
+  addRow('rdRight', '13:00', '15:00', '1x Offroad Adventure');
+  addRow('gmLeft', '09:00', '10:00', 'Opening Speech\n>*Ice Breaking*\n>>Saling Sapa');
+  addRow('gmRight', '10:00', '11:30', '*Team Building*\n>Hitung Cepat');
+} else {
+  renderRows('rdLeft'); renderRows('rdRight');
+  renderRows('gmLeft'); renderRows('gmRight');
+}
 
 const gamesLibrary = [
   { name: 'Hitung Cepat', tag: 'People Excellent' },
@@ -419,6 +631,7 @@ function calcTotal() {
   document.getElementById('f-total').value = 'Rp. ' + (price * pax).toLocaleString('id-ID');
 }
 ['f-price', 'f-pax'].forEach(id => document.getElementById(id).addEventListener('input', calcTotal));
+calcTotal();
 
 function log(msg, cls) {
   const el = document.getElementById('log');
@@ -461,6 +674,17 @@ async function runGenerate(token) {
     log('Mengambil template.pptx...');
     const templateBuf = await (await fetch('template.pptx')).arrayBuffer();
     log('✅ Template diambil.', 'ok');
+
+    if (selectedPhotoFolders.length > 0) {
+      log(`Mengambil foto dari ${selectedPhotoFolders.length} activity (dibagi rata)...`);
+      const [slide5Photos, slide8Photos] = await Promise.all([
+        fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 4),
+        fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 12),
+      ]);
+      if (slide5Photos.length) data.slide5Photos = slide5Photos;
+      if (slide8Photos.length) data.slide8Photos = slide8Photos;
+      log(`✅ ${slide5Photos.length ? 'Foto activity diambil & dibagi rata.' : 'Folder kosong, foto default dipakai.'}`, 'ok');
+    }
 
     log('Menyusun file PPTX (slide 2,4,5,6,7)...');
     const pptxBlob = await buildPptx(templateBuf, data);
