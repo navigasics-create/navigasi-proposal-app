@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Navigasi Proposal Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="pptx-engine.js"></script>
+<style>
+  :root{
+    --ink:#0d2f22; --ink-2:#123a29; --gold:#c9a44c; --gold-soft:#e7d6a3;
+    --cream:#faf5ea; --paper:#fffdf9; --line:#e4d9bf; --text:#1c2a23; --muted:#6c7a71; --danger:#b5484a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--cream); color:var(--text); font-family:'Inter',sans-serif;}
+  .topbar{background:var(--ink); color:#fff; padding:16px 20px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:10; border-bottom:3px solid var(--gold);}
+  .topbar h1{font-family:'Playfair Display',serif; font-size:16px; margin:0;}
+  .topbar span{display:block; font-size:10.5px; color:var(--gold-soft); font-weight:500;}
+  .tabs{display:flex; background:var(--ink-2); overflow-x:auto; position:sticky; top:64px; z-index:9;}
+  .tab{flex:1; min-width:100px; text-align:center; padding:11px 6px; color:#cfe0d5; font-size:12px; font-weight:600; cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap;}
+  .tab.active{color:#fff; border-bottom-color:var(--gold);}
+  main{max-width:640px; margin:0 auto; padding:20px 16px 90px;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .card{background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:14px;}
+  .card h2{font-family:'Playfair Display',serif; font-size:17px; margin:0 0 4px; color:var(--ink);}
+  .card .hint{font-size:12px; color:var(--muted); margin:0 0 14px;}
+  label{display:block; font-size:12.5px; font-weight:600; color:var(--ink-2); margin-bottom:5px;}
+  input, textarea, select{width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:7px; font-size:14px; font-family:'Inter',sans-serif; background:#fff; color:var(--text); margin-bottom:12px;}
+  textarea{resize:vertical; min-height:70px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .rundown-row{display:grid; grid-template-columns:60px 60px 1fr 28px; gap:8px; margin-bottom:8px; align-items:start;}
+  .rundown-row input{margin-bottom:0;}
+  .rundown-row textarea{margin-bottom:0; min-height:60px;}
+  .rm-btn{width:28px; height:34px; border-radius:6px; border:1px solid var(--line); background:#fff; color:var(--danger); font-size:16px; cursor:pointer;}
+  .add-row-btn{width:100%; padding:9px; border:1.5px dashed var(--gold); border-radius:7px; background:transparent; color:var(--ink-2); font-weight:600; font-size:12.5px; cursor:pointer; margin-top:4px;}
+  .chip-lib{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+  .chip{font-size:11px; background:var(--cream); border:1px solid var(--line); color:var(--ink-2); padding:6px 8px; border-radius:99px; cursor:pointer; font-weight:600;}
+  .photo-folder-chip{font-size:12.5px; background:#fff; border:1.5px solid var(--line); color:var(--ink-2); padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:6px;}
+  .photo-folder-chip.selected{border-color:var(--gold); background:var(--cream); color:var(--ink);}
+  .photo-folder-chip input{width:auto; margin:0;}
+  .primary-btn{width:100%; padding:15px; background:var(--ink); color:#fff; border:none; border-radius:8px; font-size:14.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;}
+  .primary-btn:disabled{opacity:0.6;}
+  .log{background:var(--ink); color:#cfe0d5; border-radius:8px; padding:12px; margin-top:14px; font-size:11.5px; font-family:monospace; white-space:pre-wrap; max-height:220px; overflow-y:auto;}
+  .log .ok{color:#7fd99a;} .log .err{color:#ff8a8a;}
+  .col-block{margin-bottom:14px;}
+  .col-block h3{font-size:12.5px; color:var(--muted); margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;}
+  .add-category-block{border:1.5px solid var(--line); border-radius:9px; padding:10px 12px; margin-bottom:10px; background:#fff;}
+  .add-category-title{font-size:13px; font-weight:700; color:var(--ink); margin-bottom:8px;}
+  .add-category-empty{font-size:12px; color:var(--muted); font-style:italic;}
+  .master-box{background:var(--cream); border:1px dashed var(--gold); border-radius:8px; padding:12px; margin-bottom:16px;}
+  .master-box label{font-size:11.5px;}
+  .secondary-btn{background:var(--ink-2); color:#fff; border:none; padding:9px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;}
+  .secondary-btn.full{width:100%; margin-bottom:4px;}
+  select{width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; background:#fff; margin-bottom:8px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>Navigasi Proposal Generator</h1>
+    <span>Isi data → Generate → PDF siap kirim</span>
+  </div>
+</div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-tab="client">1. Data & Harga</div>
+  <div class="tab" data-tab="rundown">2. Rundown</div>
+  <div class="tab" data-tab="games">3. Rundown Games</div>
+  <div class="tab" data-tab="generate">4. Generate</div>
+</div>
+
+<main>
+  <!-- TAB 1 -->
+  <div class="panel active" id="panel-client">
+    <div class="card">
+      <h2>Data Client</h2>
+      <p class="hint">💾 Data di tab ini otomatis tersimpan di HP kamu — aman walau ke-refresh. <a href="#" onclick="clearDraft(); return false;" style="color:var(--danger); font-weight:600;">Mulai baru / hapus draft</a></p>
+      <label>Nama Client / Perusahaan</label>
+      <input id="f-name" value="">
+      <div class="row2">
+        <div><label>No. HP</label><input id="f-phone" value=""></div>
+        <div><label>Jumlah Pax</label><input id="f-pax" type="number" value=""></div>
+      </div>
+      <label>Tanggal Kegiatan</label>
+      <input id="f-date" value="" placeholder="cth: 08/09 Agustus 2026">
+    </div>
+    <div class="card">
+      <h2>Judul Program & Harga</h2>
+      <label>Judul Program / Activity</label>
+      <input id="f-title" value="">
+      <div class="row2">
+        <div><label>Harga / Pax (Rp)</label><input id="f-price" type="number" value=""></div>
+        <div><label>Total Harga</label><input id="f-total" disabled></div>
+      </div>
+      <label>Catatan Pajak</label>
+      <select id="f-taxnote">
+        <option value="Harga belum termasuk PPN & PPh (jika diperlukan faktur pajak).">Belum termasuk PPN & PPh</option>
+        <option value="Harga sudah termasuk PPN & PPh.">Sudah termasuk PPN & PPh</option>
+      </select>
+    </div>
+    <div class="card">
+      <h2>Setup Folder Drive</h2>
+      <p class="hint">Jalankan sekali di awal — otomatis bikin 1 folder induk "Navigasi Web App" di Drive kamu, isinya semua folder yang dipakai app ini (Master Rundown, Riwayat Proposal, Photo Library 11 program).</p>
+      <button type="button" class="secondary-btn full" onclick="setupAllFolders()">🗂 Setup Semua Folder Sekarang</button>
+    </div>
+    <div class="card">
+      <h2>Foto Activity (Slide 5 & 8)</h2>
+      <p class="hint">Centang activity utama yang dipesan client (boleh lebih dari satu, foto akan dibagi rata).</p>
+      <button type="button" class="secondary-btn full" onclick="refreshPhotoFolders()">🔄 Muat Daftar Folder Activity</button>
+      <h3 style="margin:14px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase;">Program Utama</h3>
+      <div id="f-photo-folder-list-main" class="chip-lib"></div>
+      <h3 style="margin:14px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase;">Program Tambahan (jadi slide terpisah)</h3>
+      <p class="hint" style="margin-top:0">Tiap kategori (Penginapan/Transportasi/Entertainment) dipecah per venue. Centang venue mana saja yang mau ditawarkan — 1 venue = 1 slide baru, judulnya otomatis "Kategori - Nama Venue".</p>
+      <div id="f-photo-folder-list-add" class="chip-lib"></div>
+      <div id="f-additional-notes"></div>
+      <p class="hint" style="margin-top:8px">Belum ada foldernya? Klik "Setup Semua Folder Sekarang" di atas dulu, upload foto ke sub-foldernya, baru klik Muat Daftar lagi.</p>
+    </div>
+    <div class="card">
+      <h2>Fasilitas yang Didapat (Slide 5)</h2>
+      <p class="hint">Include: 6 baris. Meals: 2 baris. Fasilitas: 5 baris.</p>
+      <label>Include</label>
+      <textarea id="f-facilities" rows="6">Tiket Area
+Area Outbound/Lapang
+Games Master
+Fasilitator
+Helper
+Unit Mobil Offroad Jaya Giri</textarea>
+      <label>Meals</label>
+      <textarea id="f-meals" rows="2">1x Lunch
+1x Coffe Break</textarea>
+      <label>Fasilitas</label>
+      <textarea id="f-fasilitas" rows="5">Soundsystem
+Banner Kegiatan
+Raincoat/Jas Hujan
+Dokumetasi Foto & Video
+Standar P3K</textarea>
+    </div>
+  </div>
+
+  <!-- TAB 2: RUNDOWN -->
+  <div class="panel" id="panel-rundown">
+    <div class="card">
+      <h2>Rundown Acara (Slide 6)</h2>
+      <p class="hint">Kolom kiri & kanan diisi terpisah, sesuai desain aslinya.</p>
+
+      <div class="master-box">
+        <label>📂 Muat dari Master Rundown</label>
+        <div class="row2">
+          <select id="rd-master-list"><option value="">— pilih master —</option></select>
+          <button class="secondary-btn" onclick="refreshMasterList('rundown')">🔄 Muat Daftar</button>
+        </div>
+        <button class="secondary-btn full" onclick="loadMaster('rundown')">Terapkan Master Terpilih</button>
+        <label style="margin-top:12px">💾 Simpan Susunan Sekarang sebagai Master</label>
+        <div class="row2">
+          <input id="rd-master-name" placeholder="cth: PT Contoh Sukses / Offroad 1 Hari">
+          <button class="secondary-btn" onclick="saveMaster('rundown')">Simpan</button>
+        </div>
+      </div>
+
+      <div class="col-block">
+        <h3>Kolom Kiri</h3>
+        <div id="rd-left-rows"></div>
+        <button class="add-row-btn" onclick="addRow('rdLeft')">+ Tambah Baris</button>
+      </div>
+      <div class="col-block">
+        <h3>Kolom Kanan</h3>
+        <div id="rd-right-rows"></div>
+        <button class="add-row-btn" onclick="addRow('rdRight')">+ Tambah Baris</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: GAMES -->
+  <div class="panel" id="panel-games">
+    <div class="card">
+      <h2>Rundown Games (Slide 7)</h2>
+      <p class="hint">Tips: awali baris dengan <b>&gt;</b> untuk indent, apit <b>*teks*</b> untuk miring (kategori game).</p>
+
+      <div class="master-box">
+        <label>📂 Muat dari Master Rundown Games</label>
+        <div class="row2">
+          <select id="gm-master-list"><option value="">— pilih master —</option></select>
+          <button class="secondary-btn" onclick="refreshMasterList('games')">🔄 Muat Daftar</button>
+        </div>
+        <button class="secondary-btn full" onclick="loadMaster('games')">Terapkan Master Terpilih</button>
+        <label style="margin-top:12px">💾 Simpan Susunan Sekarang sebagai Master</label>
+        <div class="row2">
+          <input id="gm-master-name" placeholder="cth: PT Contoh Sukses / Games Team Building">
+          <button class="secondary-btn" onclick="saveMaster('games')">Simpan</button>
+        </div>
+      </div>
+
+      <div class="chip-lib" id="game-chip-lib"></div>
+      <div class="col-block">
+        <h3>Kolom Kiri</h3>
+        <div id="gm-left-rows"></div>
+        <button class="add-row-btn" onclick="addRow('gmLeft')">+ Tambah Blok Jam</button>
+      </div>
+      <div class="col-block">
+        <h3>Kolom Kanan</h3>
+        <div id="gm-right-rows"></div>
+        <button class="add-row-btn" onclick="addRow('gmRight')">+ Tambah Blok Jam</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: GENERATE -->
+  <div class="panel" id="panel-generate">
+    <div class="card">
+      <h2>Generate Penawaran</h2>
+      <p class="hint">Klik tombol di bawah. Kamu akan diminta izinkan akses Google Drive (sekali per sesi), lalu PDF otomatis terdownload.</p>
+      <button class="primary-btn" id="gen-btn" onclick="generate()">⬇ Generate PDF Penawaran</button>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const CLIENT_ID = '737418245676-9cm7prnuhkgopgpni1egcdpln3c3alcs.apps.googleusercontent.com';
+const SCOPE = 'https://www.googleapis.com/auth/drive';
+
+let cachedToken = null;
+let cachedTokenExpiry = 0;
+function getAccessToken() {
+  return new Promise((resolve, reject) => {
+    if (cachedToken && Date.now() < cachedTokenExpiry) { resolve(cachedToken); return; }
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPE,
+      callback: (response) => {
+        if (response.error) { reject(new Error(response.error)); return; }
+        cachedToken = response.access_token;
+        cachedTokenExpiry = Date.now() + (response.expires_in - 60) * 1000;
+        resolve(cachedToken);
+      },
+    });
+    tokenClient.requestAccessToken();
+  });
+}
+
+const ROOT_FOLDER_NAME = 'Navigasi Web App';
+const MASTER_FOLDER_NAMES = { rundown: 'Master Roundown Acara', games: 'Master Roundown Games' };
+const PROPOSAL_FOLDER_NAME = 'Navigasi Proposal Generator';
+const PHOTO_LIBRARY_ROOT = 'Navigasi Photo Library';
+const PROGRAM_LIST = [
+  'Teambuilding', 'Amazing Race', 'Treasure Hunt', 'Offroad', 'Paintball', 'Rafting', 'Hiking', 'ATV',
+  'Program Tambahan - Penginapan', 'Program Tambahan - Transportasi', 'Program Tambahan - Entertainment Electone',
+];
+const folderIdCache = {};
+
+async function getOrCreateFolder(token, folderName, parentId) {
+  const cacheKey = (parentId || 'root') + '/' + folderName;
+  if (folderIdCache[cacheKey]) return folderIdCache[cacheKey];
+  const parentClause = parentId ? `'${parentId}' in parents and ` : '';
+  const q = encodeURIComponent(`${parentClause}name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  if (data.files && data.files.length > 0) {
+    folderIdCache[cacheKey] = data.files[0].id;
+    return folderIdCache[cacheKey];
+  }
+  const body = { name: folderName, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) body.parents = [parentId];
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!createRes.ok) throw new Error(await createRes.text());
+  const created = await createRes.json();
+  folderIdCache[cacheKey] = created.id;
+  return folderIdCache[cacheKey];
+}
+
+const getRootFolderId = (token) => getOrCreateFolder(token, ROOT_FOLDER_NAME, null);
+const getMasterFolderId = async (token, type) => {
+  const rootId = await getRootFolderId(token);
+  return getOrCreateFolder(token, MASTER_FOLDER_NAMES[type], rootId);
+};
+const getProposalFolderId = async (token) => {
+  const rootId = await getRootFolderId(token);
+  return getOrCreateFolder(token, PROPOSAL_FOLDER_NAME, rootId);
+};
+const getPhotoLibraryRootId = async (token) => {
+  const rootId = await getRootFolderId(token);
+  return getOrCreateFolder(token, PHOTO_LIBRARY_ROOT, rootId);
+};
+
+async function setupAllFolders() {
+  try {
+    const token = await getAccessToken();
+    const rootId = await getRootFolderId(token);
+    await getOrCreateFolder(token, MASTER_FOLDER_NAMES.rundown, rootId);
+    await getOrCreateFolder(token, MASTER_FOLDER_NAMES.games, rootId);
+    await getOrCreateFolder(token, PROPOSAL_FOLDER_NAME, rootId);
+    const photoRootId = await getOrCreateFolder(token, PHOTO_LIBRARY_ROOT, rootId);
+    for (const program of PROGRAM_LIST) {
+      await getOrCreateFolder(token, program, photoRootId);
+    }
+    alert('Selesai! Semua folder sudah dibuat rapi di dalam folder "Navigasi Web App" di Drive kamu, termasuk 11 folder program foto.');
+    refreshPhotoFolders();
+  } catch (err) {
+    alert('Gagal setup folder: ' + err.message);
+  }
+}
+
+let selectedPhotoFolders = []; // main program folders: [{id, name}]
+let selectedAdditionalFolders = []; // legacy (kept only for old-draft compatibility, no longer used to render)
+let selectedAdditionalVenues = []; // [{id, name, categoryLabel, categoryFolderId}]
+let additionalNotes = {}; // venueId (or legacy folderId) -> note text
+
+function isAdditionalFolder(name) {
+  return name.startsWith('Program Tambahan');
+}
+
+async function listSubfolders(token, parentId) {
+  const q = encodeURIComponent(`'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.files || [];
+}
+
+async function refreshPhotoFolders() {
+  try {
+    const token = await getAccessToken();
+    const rootId = await getPhotoLibraryRootId(token);
+    const q = encodeURIComponent(`'${rootId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.files.length === 0) {
+      alert('Folder "Navigasi Photo Library" belum ada isinya. Klik "Setup Semua Folder Sekarang" dulu di kartu di atas.');
+      return;
+    }
+    const mainFolders = data.files.filter(f => !isAdditionalFolder(f.name));
+    const addFolders = data.files.filter(f => isAdditionalFolder(f.name));
+    renderPhotoFolderChips('f-photo-folder-list-main', mainFolders, selectedPhotoFolders, togglePhotoFolder);
+    await renderAdditionalCategoriesWithVenues(token, addFolders);
+  } catch (err) {
+    alert('Gagal ambil daftar folder foto: ' + err.message);
+  }
+}
+
+// Renders each "Program Tambahan - X" category as a block, with checkboxes for each
+// venue sub-folder inside it (e.g. Hotel Grand Nirwana, Villa Biru, ...). If a category
+// has no sub-folders yet (old flat structure), falls back to treating the category folder
+// itself as a single selectable "venue" so nothing breaks for folders not yet restructured.
+async function renderAdditionalCategoriesWithVenues(token, addFolders) {
+  const container = document.getElementById('f-photo-folder-list-add');
+  if (addFolders.length === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = '<p class="hint">Memuat daftar venue...</p>';
+
+  const blocks = [];
+  for (const cat of addFolders) {
+    const label = cat.name.replace(/^Program Tambahan - /, '');
+    let venues = [];
+    try {
+      venues = await listSubfolders(token, cat.id);
+    } catch (err) {
+      venues = [];
+    }
+
+    let inner;
+    if (venues.length === 0) {
+      // Fallback: no sub-folder venues — use the category folder itself as one venue.
+      const checked = selectedAdditionalVenues.some(s => s.id === cat.id);
+      inner = `<label class="photo-folder-chip ${checked ? 'selected' : ''}">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleAdditionalVenue('${cat.id}','','${escapeJsStr(label)}','${cat.id}', this)">
+        ${escapeHtmlStr(label)} (langsung dari folder ini)
+      </label>`;
+    } else {
+      inner = venues.map(v => {
+        const checked = selectedAdditionalVenues.some(s => s.id === v.id);
+        return `<label class="photo-folder-chip ${checked ? 'selected' : ''}">
+          <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleAdditionalVenue('${v.id}','${escapeJsStr(v.name)}','${escapeJsStr(label)}','${cat.id}', this)">
+          ${escapeHtmlStr(v.name)}
+        </label>`;
+      }).join('');
+    }
+
+    blocks.push(`<div class="add-category-block">
+      <div class="add-category-title">${escapeHtmlStr(label)}</div>
+      <div class="chip-lib">${inner}</div>
+    </div>`);
+  }
+  container.innerHTML = blocks.join('');
+}
+
+function escapeJsStr(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function escapeHtmlStr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderPhotoFolderChips(containerId, files, selectedList, toggleFn) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = files.map(f => {
+    const checked = selectedList.some(s => s.id === f.id);
+    const label = f.name.replace(/^Program Tambahan - /, '');
+    return `<label class="photo-folder-chip ${checked ? 'selected' : ''}">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="${toggleFn.name}('${f.id}','${f.name.replace(/'/g, "\\'")}', this)">
+      ${label}
+    </label>`;
+  }).join('');
+}
+
+function togglePhotoFolder(id, name, checkboxEl) {
+  const idx = selectedPhotoFolders.findIndex(s => s.id === id);
+  if (idx >= 0) selectedPhotoFolders.splice(idx, 1);
+  else selectedPhotoFolders.push({ id, name });
+  checkboxEl.closest('.photo-folder-chip').classList.toggle('selected', idx < 0);
+  saveDraft();
+}
+
+function toggleAdditionalVenue(id, name, categoryLabel, categoryFolderId, checkboxEl) {
+  const idx = selectedAdditionalVenues.findIndex(s => s.id === id);
+  if (idx >= 0) {
+    selectedAdditionalVenues.splice(idx, 1);
+    delete additionalNotes[id];
+  } else {
+    selectedAdditionalVenues.push({ id, name, categoryLabel, categoryFolderId });
+  }
+  checkboxEl.closest('.photo-folder-chip').classList.toggle('selected', idx < 0);
+  renderAdditionalNotes();
+  saveDraft();
+}
+
+function renderAdditionalNotes() {
+  const container = document.getElementById('f-additional-notes');
+  container.innerHTML = selectedAdditionalVenues.map(v => {
+    const title = v.name ? `${v.categoryLabel} - ${v.name}` : v.categoryLabel;
+    return `<div style="margin-top:8px;">
+      <label>Catatan singkat untuk "${title}"</label>
+      <input value="${(additionalNotes[v.id] || '').replace(/"/g, '&quot;')}" placeholder="cth: Tersedia berbagai pilihan sesuai kebutuhan rombongan."
+        oninput="additionalNotes['${v.id}']=this.value; saveDraft();">
+    </div>`;
+  }).join('');
+}
+
+function resizePhotoBytes(bytes, maxDim) {
+  return new Promise((resolve) => {
+    try {
+      const blob = new Blob([bytes]);
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (Math.max(width, height) > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((outBlob) => {
+          if (!outBlob) { resolve({ bytes, ext: 'jpg' }); return; }
+          outBlob.arrayBuffer().then(buf => resolve({ bytes: new Uint8Array(buf), ext: 'jpg' }));
+        }, 'image/jpeg', 0.82);
+      };
+      img.onerror = () => resolve({ bytes, ext: 'jpg' }); // fallback: use original if decode fails
+      img.src = url;
+    } catch (e) {
+      resolve({ bytes, ext: 'jpg' });
+    }
+  });
+}
+
+function extFromMime(mime) {
+  if (mime.includes('png')) return 'png';
+  if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg';
+  if (mime.includes('gif')) return 'gif';
+  if (mime.includes('webp')) return 'webp';
+  return 'jpg';
+}
+
+const folderFileListCache = {};
+
+async function listImagesInFolder(token, folderId) {
+  if (folderFileListCache[folderId]) return folderFileListCache[folderId];
+  const q = encodeURIComponent(`'${folderId}' in parents and mimeType contains 'image/' and trashed = false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&orderBy=name`, {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  folderFileListCache[folderId] = data.files || [];
+  return folderFileListCache[folderId];
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function fetchPhotosFromFolder(token, folderId, count) {
+  const files = await listImagesInFolder(token, folderId);
+  if (files.length === 0) return [];
+  const photos = [];
+  for (let i = 0; i < count; i++) {
+    const f = files[i % files.length]; // cycle through if fewer photos than slots
+    let attempt = 0;
+    let success = false;
+    while (attempt < 2 && !success) {
+      attempt++;
+      try {
+        const imgRes = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!imgRes.ok) throw new Error('status ' + imgRes.status);
+        const rawBytes = new Uint8Array(await imgRes.arrayBuffer());
+        const resized = await resizePhotoBytes(rawBytes, 1400);
+        photos.push(resized);
+        success = true;
+      } catch (err) {
+        if (attempt >= 2) {
+          console.warn(`Gagal ambil foto "${f.name}" setelah 2x percobaan:`, err.message);
+        } else {
+          await sleep(300); // brief pause before retry
+        }
+      }
+    }
+    await sleep(80); // small pacing gap between requests to avoid rate limits
+  }
+  return photos;
+}
+
+// Splits `totalSlots` as evenly as possible across N folders, then fetches each folder's share.
+async function fetchPhotosFromMultipleFolders(token, folders, totalSlots) {
+  if (!folders.length) return [];
+  const base = Math.floor(totalSlots / folders.length);
+  let remainder = totalSlots % folders.length;
+  const shares = folders.map(() => {
+    const extra = remainder > 0 ? 1 : 0;
+    if (remainder > 0) remainder--;
+    return base + extra;
+  });
+  let allPhotos = [];
+  for (let i = 0; i < folders.length; i++) {
+    const photos = await fetchPhotosFromFolder(token, folders[i].id, shares[i]);
+    allPhotos = allPhotos.concat(photos);
+  }
+  return allPhotos;
+}
+
+async function saveMaster(type) {
+  const nameInput = document.getElementById(type === 'rundown' ? 'rd-master-name' : 'gm-master-name');
+  const name = nameInput.value.trim();
+  if (!name) { alert('Isi dulu nama master-nya.'); return; }
+  try {
+    const token = await getAccessToken();
+    const folderId = await getMasterFolderId(token, type);
+    const payload = type === 'rundown'
+      ? { left: state.rdLeft, right: state.rdRight }
+      : { left: state.gmLeft, right: state.gmRight };
+    const fileName = `${name}.json`;
+    const metadata = { name: fileName, mimeType: 'application/json', parents: [folderId] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    nameInput.value = '';
+    alert('Tersimpan sebagai master: "' + name + '"');
+    refreshMasterList(type);
+  } catch (err) {
+    alert('Gagal menyimpan: ' + err.message);
+  }
+}
+
+async function refreshMasterList(type) {
+  const selectId = type === 'rundown' ? 'rd-master-list' : 'gm-master-list';
+  const select = document.getElementById(selectId);
+  try {
+    const token = await getAccessToken();
+    const folderId = await getMasterFolderId(token, type);
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    select.innerHTML = '<option value="">— pilih master —</option>' +
+      data.files.map(f => `<option value="${f.id}">${f.name.replace(/\.json$/, '')}</option>`).join('');
+  } catch (err) {
+    alert('Gagal ambil daftar master: ' + err.message);
+  }
+}
+
+async function loadMaster(type) {
+  const selectId = type === 'rundown' ? 'rd-master-list' : 'gm-master-list';
+  const fileId = document.getElementById(selectId).value;
+  if (!fileId) { alert('Pilih master dari daftar dulu.'); return; }
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const payload = await res.json();
+    if (type === 'rundown') {
+      state.rdLeft = payload.left || [];
+      state.rdRight = payload.right || [];
+      renderRows('rdLeft'); renderRows('rdRight');
+    } else {
+      state.gmLeft = payload.left || [];
+      state.gmRight = payload.right || [];
+      renderRows('gmLeft'); renderRows('gmRight');
+    }
+    alert('Master berhasil dimuat, silakan cek & edit sebelum generate.');
+    saveDraft();
+  } catch (err) {
+    alert('Gagal memuat master: ' + err.message);
+  }
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+  });
+});
+
+const state = { rdLeft: [], rdRight: [], gmLeft: [], gmRight: [] };
+
+const DRAFT_KEY = 'navigasiFormDraft';
+
+function saveDraft() {
+  try {
+    const draft = {
+      name: document.getElementById('f-name').value,
+      phone: document.getElementById('f-phone').value,
+      date: document.getElementById('f-date').value,
+      pax: document.getElementById('f-pax').value,
+      title: document.getElementById('f-title').value,
+      price: document.getElementById('f-price').value,
+      taxnote: document.getElementById('f-taxnote').value,
+      facilities: document.getElementById('f-facilities').value,
+      meals: document.getElementById('f-meals').value,
+      fasilitas: document.getElementById('f-fasilitas').value,
+      state: state,
+      selectedPhotoFolders: (typeof selectedPhotoFolders !== 'undefined') ? selectedPhotoFolders : [],
+      selectedAdditionalVenues: (typeof selectedAdditionalVenues !== 'undefined') ? selectedAdditionalVenues : [],
+      additionalNotes: (typeof additionalNotes !== 'undefined') ? additionalNotes : {},
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch (e) { /* ignore quota errors */ }
+}
+
+function restoreDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    const draft = JSON.parse(raw);
+    document.getElementById('f-name').value = draft.name || '';
+    document.getElementById('f-phone').value = draft.phone || '';
+    document.getElementById('f-date').value = draft.date || '';
+    document.getElementById('f-pax').value = draft.pax || '';
+    document.getElementById('f-title').value = draft.title || '';
+    document.getElementById('f-price').value = draft.price || '';
+    if (draft.taxnote) document.getElementById('f-taxnote').value = draft.taxnote;
+    if (draft.facilities !== undefined) document.getElementById('f-facilities').value = draft.facilities;
+    if (draft.meals !== undefined) document.getElementById('f-meals').value = draft.meals;
+    if (draft.fasilitas !== undefined) document.getElementById('f-fasilitas').value = draft.fasilitas;
+    if (draft.state) {
+      state.rdLeft = draft.state.rdLeft || [];
+      state.rdRight = draft.state.rdRight || [];
+      state.gmLeft = draft.state.gmLeft || [];
+      state.gmRight = draft.state.gmRight || [];
+    }
+    if (draft.selectedPhotoFolders && typeof selectedPhotoFolders !== 'undefined') {
+      selectedPhotoFolders = draft.selectedPhotoFolders;
+    }
+    if (draft.selectedAdditionalVenues && typeof selectedAdditionalVenues !== 'undefined') {
+      selectedAdditionalVenues = draft.selectedAdditionalVenues;
+    }
+    if (draft.additionalNotes && typeof additionalNotes !== 'undefined') {
+      additionalNotes = draft.additionalNotes;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function clearDraft() {
+  if (!confirm('Yakin mau hapus semua isian sekarang dan mulai dari kosong? (Master rundown di Drive tidak terpengaruh, aman.)')) return;
+  localStorage.removeItem(DRAFT_KEY);
+  location.reload();
+}
+document.addEventListener('input', () => {
+  clearTimeout(saveDraftTimer);
+  saveDraftTimer = setTimeout(saveDraft, 400);
+});
+
+function addRow(key, time1 = '', time2 = '', label = '') {
+  state[key].push({ time1, time2, label });
+  renderRows(key);
+  saveDraft();
+}
+function removeRow(key, i) { state[key].splice(i, 1); renderRows(key); saveDraft(); }
+
+function formatTimeInput(el) {
+  let digits = el.value.replace(/\D/g, '').slice(0, 4);
+  let formatted = digits;
+  if (digits.length > 2) formatted = digits.slice(0, 2) + ':' + digits.slice(2);
+  el.value = formatted;
+}
+
+function renderRows(key) {
+  const containerId = { rdLeft: 'rd-left-rows', rdRight: 'rd-right-rows', gmLeft: 'gm-left-rows', gmRight: 'gm-right-rows' }[key];
+  const c = document.getElementById(containerId);
+  c.innerHTML = state[key].map((r, i) => `
+    <div class="rundown-row">
+      <input value="${r.time1}" placeholder="09:00" data-key="${key}" data-row="${i}" data-field="time1"
+        oninput="formatTimeInput(this); state.${key}[${i}].time1=this.value" onkeydown="handleRowNav(event,this)">
+      <input value="${r.time2}" placeholder="09:30" data-key="${key}" data-row="${i}" data-field="time2"
+        oninput="formatTimeInput(this); state.${key}[${i}].time2=this.value" onkeydown="handleRowNav(event,this)">
+      <textarea data-key="${key}" data-row="${i}" data-field="label"
+        oninput="state.${key}[${i}].label=this.value" onkeydown="handleRowNav(event,this)">${r.label}</textarea>
+      <button class="rm-btn" onclick="removeRow('${key}',${i})">×</button>
+    </div>`).join('');
+}
+
+// Desktop keyboard navigation: Up/Down moves between rows in the same field,
+// Left/Right moves between fields in the same row (only when caret is at the edge,
+// so normal text editing inside the textarea still works).
+function handleRowNav(e, el) {
+  const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+  if (!isArrow) return;
+  const key = el.dataset.key;
+  const row = parseInt(el.dataset.row, 10);
+  const field = el.dataset.field;
+  const fieldsOrder = ['time1', 'time2', 'label'];
+  const container = el.closest('.rundown-row').parentElement;
+
+  const focusField = (targetRow, targetField) => {
+    const sel = `[data-key="${key}"][data-row="${targetRow}"][data-field="${targetField}"]`;
+    const target = container.querySelector(sel);
+    if (target) { e.preventDefault(); target.focus(); if (target.select) target.select(); }
+  };
+
+  if (e.key === 'ArrowUp') { focusField(row - 1, field); return; }
+  if (e.key === 'ArrowDown') { focusField(row + 1, field); return; }
+
+  if (e.key === 'ArrowLeft' && el.tagName !== 'TEXTAREA') {
+    if (el.selectionStart === 0) {
+      const idx = fieldsOrder.indexOf(field);
+      if (idx > 0) focusField(row, fieldsOrder[idx - 1]);
+    }
+    return;
+  }
+  if (e.key === 'ArrowRight' && el.tagName !== 'TEXTAREA') {
+    if (el.selectionEnd === el.value.length) {
+      const idx = fieldsOrder.indexOf(field);
+      if (idx < fieldsOrder.length - 1) focusField(row, fieldsOrder[idx + 1]);
+    }
+    return;
+  }
+}
+
+const hasDraft = restoreDraft();
+if (!hasDraft) {
+  addRow('rdLeft', '09:00', '09:30', 'Peserta tiba\nToileting\nPreparation');
+  addRow('rdRight', '13:00', '15:00', '1x Offroad Adventure');
+  addRow('gmLeft', '09:00', '10:00', 'Opening Speech\n>*Ice Breaking*\n>>Saling Sapa');
+  addRow('gmRight', '10:00', '11:30', '*Team Building*\n>Hitung Cepat');
+} else {
+  renderRows('rdLeft'); renderRows('rdRight');
+  renderRows('gmLeft'); renderRows('gmRight');
+}
+
+const gamesLibrary = [
+  { name: 'Hitung Cepat', tag: 'People Excellent' },
+  { name: 'Blind People', tag: 'Strong Leadership' },
+  { name: 'Qube Tower', tag: 'People Excellent' },
+  { name: 'Bold Building', tag: 'Strong Leadership' },
+  { name: 'Stick Transfer', tag: '' },
+  { name: 'Hulahoop Race', tag: '' },
+];
+document.getElementById('game-chip-lib').innerHTML = gamesLibrary.map(g =>
+  `<div class="chip">${g.name}${g.tag ? ' (' + g.tag + ')' : ''}</div>`
+).join('');
+
+function calcTotal() {
+  const price = Number(document.getElementById('f-price').value) || 0;
+  const pax = Number(document.getElementById('f-pax').value) || 0;
+  document.getElementById('f-total').value = 'Rp. ' + (price * pax).toLocaleString('id-ID');
+}
+['f-price', 'f-pax'].forEach(id => document.getElementById(id).addEventListener('input', calcTotal));
+calcTotal();
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function generate() {
+  document.getElementById('gen-btn').disabled = true;
+  document.getElementById('log').innerHTML = '';
+  log('Menyiapkan akses Google...');
+  getAccessToken()
+    .then(token => { log('✅ Izin siap.', 'ok'); return runGenerate(token); })
+    .catch(err => { log('❌ Gagal dapat izin: ' + err.message, 'err'); document.getElementById('gen-btn').disabled = false; });
+}
+
+async function runGenerate(token) {
+  try {
+    const data = {
+      nama_client: document.getElementById('f-name').value,
+      phone: document.getElementById('f-phone').value,
+      tanggal: document.getElementById('f-date').value,
+      pax: Number(document.getElementById('f-pax').value) || 0,
+      activity: document.getElementById('f-title').value,
+      judul_program: document.getElementById('f-title').value,
+      harga_pax: Number(document.getElementById('f-price').value) || 0,
+      taxNote: document.getElementById('f-taxnote').value,
+      facilityItems: document.getElementById('f-facilities').value.split('\n').filter(Boolean),
+      mealsItems: document.getElementById('f-meals').value.split('\n').filter(Boolean),
+      fasilitasItems: document.getElementById('f-fasilitas').value.split('\n').filter(Boolean),
+      rundownLeft: state.rdLeft,
+      rundownRight: state.rdRight,
+      gamesLeft: state.gmLeft,
+      gamesRight: state.gmRight,
+    };
+
+    log('Mengambil template.pptx...');
+    const templateBuf = await (await fetch('template.pptx')).arrayBuffer();
+    log('✅ Template diambil.', 'ok');
+
+    if (selectedPhotoFolders.length > 0) {
+      log(`Mengambil foto slide 5 dari ${selectedPhotoFolders.length} program utama...`);
+      const slide5Photos = await fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 5);
+      if (slide5Photos.length) data.slide5Photos = slide5Photos;
+      log('✅ Foto slide 5 diambil.', 'ok');
+
+      log('Mengambil foto slide 8...');
+      const slide8Photos = await fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 12);
+      if (slide8Photos.length) data.slide8Photos = slide8Photos;
+      log(`✅ Foto slide 8 diambil (${slide8Photos.length}/12).`, 'ok');
+    }
+
+    if (selectedAdditionalVenues.length > 0) {
+      log(`Menyiapkan ${selectedAdditionalVenues.length} slide additional (per venue)...`);
+      const additionalSlides = [];
+      for (const venue of selectedAdditionalVenues) {
+        const photos = await fetchPhotosFromFolder(token, venue.id, 6);
+        additionalSlides.push({
+          categoryLabel: venue.categoryLabel,
+          venueName: venue.name || '',
+          note: additionalNotes[venue.id] || '',
+          photos,
+        });
+      }
+      data.additionalSlides = additionalSlides;
+      log(`✅ ${additionalSlides.length} slide additional siap ditambahkan.`, 'ok');
+    }
+
+    log('Menyusun file PPTX (slide 2,4,5,6,7)...');
+    const pptxBlob = await buildPptx(templateBuf, data);
+    log('✅ PPTX tersusun (' + Math.round(pptxBlob.size / 1024) + ' KB).', 'ok');
+
+    log('Mengupload ke Google Drive & convert ke Slides...');
+    const proposalFolderId = await getProposalFolderId(token);
+    const metadata = {
+      name: 'Penawaran_' + (data.nama_client || 'Navigasi') + '_' + Date.now(),
+      mimeType: 'application/vnd.google-apps.presentation',
+      parents: [proposalFolderId],
+    };
+    const pptxFile = new File([pptxBlob], 'penawaran.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', pptxFile);
+    const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form,
+    });
+    if (!uploadRes.ok) throw new Error('Upload gagal: ' + await uploadRes.text());
+    const uploadData = await uploadRes.json();
+    log('✅ Berhasil diupload & convert.', 'ok');
+
+    log('Meminta export PDF...');
+    const pdfRes = await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/export?mimeType=application/pdf`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!pdfRes.ok) {
+      const errText = await pdfRes.text();
+      throw new Error(`Export PDF gagal (${pdfRes.status}): ${errText}`);
+    }
+    const pdfBlob = await pdfRes.blob();
+    log('✅ PDF diterima. Mendownload...', 'ok');
+
+    const url = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Penawaran_' + (data.nama_client || 'Navigasi') + '.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    log('🎉 SELESAI! PDF sudah terdownload.', 'ok');
+  } catch (err) {
+    log('❌ ERROR: ' + err.message, 'err');
+  } finally {
+    document.getElementById('gen-btn').disabled = false;
+  }
+}
+</script>
+</body>
+</html>
