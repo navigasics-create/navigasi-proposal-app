@@ -107,10 +107,15 @@
     </div>
     <div class="card">
       <h2>Foto Activity (Slide 5 & 8)</h2>
-      <p class="hint">Centang activity yang dipesan client (boleh lebih dari satu, foto akan dibagi rata). Nama file di dalam folder bebas — yang penting fotonya ada di folder yang tepat.</p>
+      <p class="hint">Centang activity utama yang dipesan client (boleh lebih dari satu, foto akan dibagi rata).</p>
       <button type="button" class="secondary-btn full" onclick="refreshPhotoFolders()">🔄 Muat Daftar Folder Activity</button>
-      <div id="f-photo-folder-list" class="chip-lib"></div>
-      <p class="hint" style="margin-top:8px">Belum ada foldernya? Buat & upload foto dulu ke Drive kamu, di folder <b>"Navigasi Photo Library" → [nama activity]</b>, baru klik Muat Daftar lagi.</p>
+      <h3 style="margin:14px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase;">Program Utama</h3>
+      <div id="f-photo-folder-list-main" class="chip-lib"></div>
+      <h3 style="margin:14px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase;">Program Tambahan (jadi slide terpisah)</h3>
+      <p class="hint" style="margin-top:0">Tiap yang dicentang di sini otomatis nambah 1 slide baru khusus foto item itu.</p>
+      <div id="f-photo-folder-list-add" class="chip-lib"></div>
+      <div id="f-additional-notes"></div>
+      <p class="hint" style="margin-top:8px">Belum ada foldernya? Klik "Setup Semua Folder Sekarang" di atas dulu, upload foto ke sub-foldernya, baru klik Muat Daftar lagi.</p>
     </div>
     <div class="card">
       <h2>Fasilitas yang Didapat (Slide 5)</h2>
@@ -304,10 +309,15 @@ async function setupAllFolders() {
   }
 }
 
-let selectedPhotoFolders = []; // [{id, name}]
+let selectedPhotoFolders = []; // main program folders: [{id, name}]
+let selectedAdditionalFolders = []; // additional folders: [{id, name}]
+let additionalNotes = {}; // folderId -> note text
+
+function isAdditionalFolder(name) {
+  return name.startsWith('Program Tambahan');
+}
 
 async function refreshPhotoFolders() {
-  const container = document.getElementById('f-photo-folder-list');
   try {
     const token = await getAccessToken();
     const rootId = await getPhotoLibraryRootId(token);
@@ -318,23 +328,26 @@ async function refreshPhotoFolders() {
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     if (data.files.length === 0) {
-      container.innerHTML = '<p class="hint">Belum ada sub-folder activity.</p>';
-      alert('Folder "Navigasi Photo Library" sudah dibuat di Drive kamu, tapi belum ada sub-folder activity di dalamnya. Bikin dulu sub-foldernya (misal "Offroad", "Team Building"), upload foto, baru klik Muat Daftar lagi.');
+      alert('Folder "Navigasi Photo Library" belum ada isinya. Klik "Setup Semua Folder Sekarang" dulu di kartu di atas.');
       return;
     }
-    renderPhotoFolderChips(data.files);
+    const mainFolders = data.files.filter(f => !isAdditionalFolder(f.name));
+    const addFolders = data.files.filter(f => isAdditionalFolder(f.name));
+    renderPhotoFolderChips('f-photo-folder-list-main', mainFolders, selectedPhotoFolders, togglePhotoFolder);
+    renderPhotoFolderChips('f-photo-folder-list-add', addFolders, selectedAdditionalFolders, toggleAdditionalFolder);
   } catch (err) {
     alert('Gagal ambil daftar folder foto: ' + err.message);
   }
 }
 
-function renderPhotoFolderChips(files) {
-  const container = document.getElementById('f-photo-folder-list');
+function renderPhotoFolderChips(containerId, files, selectedList, toggleFn) {
+  const container = document.getElementById(containerId);
   container.innerHTML = files.map(f => {
-    const checked = selectedPhotoFolders.some(s => s.id === f.id);
+    const checked = selectedList.some(s => s.id === f.id);
+    const label = f.name.replace(/^Program Tambahan - /, '');
     return `<label class="photo-folder-chip ${checked ? 'selected' : ''}">
-      <input type="checkbox" ${checked ? 'checked' : ''} onchange="togglePhotoFolder('${f.id}','${f.name.replace(/'/g, "\\'")}', this)">
-      ${f.name}
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="${toggleFn.name}('${f.id}','${f.name.replace(/'/g, "\\'")}', this)">
+      ${label}
     </label>`;
   }).join('');
 }
@@ -344,6 +357,32 @@ function togglePhotoFolder(id, name, checkboxEl) {
   if (idx >= 0) selectedPhotoFolders.splice(idx, 1);
   else selectedPhotoFolders.push({ id, name });
   checkboxEl.closest('.photo-folder-chip').classList.toggle('selected', idx < 0);
+  saveDraft();
+}
+
+function toggleAdditionalFolder(id, name, checkboxEl) {
+  const idx = selectedAdditionalFolders.findIndex(s => s.id === id);
+  if (idx >= 0) {
+    selectedAdditionalFolders.splice(idx, 1);
+    delete additionalNotes[id];
+  } else {
+    selectedAdditionalFolders.push({ id, name });
+  }
+  checkboxEl.closest('.photo-folder-chip').classList.toggle('selected', idx < 0);
+  renderAdditionalNotes();
+  saveDraft();
+}
+
+function renderAdditionalNotes() {
+  const container = document.getElementById('f-additional-notes');
+  container.innerHTML = selectedAdditionalFolders.map(f => {
+    const label = f.name.replace(/^Program Tambahan - /, '');
+    return `<div style="margin-top:8px;">
+      <label>Catatan singkat untuk "${label}"</label>
+      <input value="${(additionalNotes[f.id] || '').replace(/"/g, '&quot;')}" placeholder="cth: Tersedia berbagai pilihan sesuai kebutuhan rombongan."
+        oninput="additionalNotes['${f.id}']=this.value; saveDraft();">
+    </div>`;
+  }).join('');
 }
 
 function extFromMime(mime) {
@@ -491,6 +530,8 @@ function saveDraft() {
       fasilitas: document.getElementById('f-fasilitas').value,
       state: state,
       selectedPhotoFolders: (typeof selectedPhotoFolders !== 'undefined') ? selectedPhotoFolders : [],
+      selectedAdditionalFolders: (typeof selectedAdditionalFolders !== 'undefined') ? selectedAdditionalFolders : [],
+      additionalNotes: (typeof additionalNotes !== 'undefined') ? additionalNotes : {},
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   } catch (e) { /* ignore quota errors */ }
@@ -519,6 +560,12 @@ function restoreDraft() {
     }
     if (draft.selectedPhotoFolders && typeof selectedPhotoFolders !== 'undefined') {
       selectedPhotoFolders = draft.selectedPhotoFolders;
+    }
+    if (draft.selectedAdditionalFolders && typeof selectedAdditionalFolders !== 'undefined') {
+      selectedAdditionalFolders = draft.selectedAdditionalFolders;
+    }
+    if (draft.additionalNotes && typeof additionalNotes !== 'undefined') {
+      additionalNotes = draft.additionalNotes;
     }
     return true;
   } catch (e) {
@@ -676,14 +723,26 @@ async function runGenerate(token) {
     log('✅ Template diambil.', 'ok');
 
     if (selectedPhotoFolders.length > 0) {
-      log(`Mengambil foto dari ${selectedPhotoFolders.length} activity (dibagi rata)...`);
+      log(`Mengambil foto dari ${selectedPhotoFolders.length} program utama (dibagi rata)...`);
       const [slide5Photos, slide8Photos] = await Promise.all([
         fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 4),
         fetchPhotosFromMultipleFolders(token, selectedPhotoFolders, 12),
       ]);
       if (slide5Photos.length) data.slide5Photos = slide5Photos;
       if (slide8Photos.length) data.slide8Photos = slide8Photos;
-      log(`✅ ${slide5Photos.length ? 'Foto activity diambil & dibagi rata.' : 'Folder kosong, foto default dipakai.'}`, 'ok');
+      log(`✅ ${slide5Photos.length ? 'Foto program utama diambil.' : 'Folder kosong, foto default dipakai.'}`, 'ok');
+    }
+
+    if (selectedAdditionalFolders.length > 0) {
+      log(`Menyiapkan ${selectedAdditionalFolders.length} slide additional...`);
+      const additionalSlides = [];
+      for (const folder of selectedAdditionalFolders) {
+        const photos = await fetchPhotosFromFolder(token, folder.id, 4);
+        const label = folder.name.replace(/^Program Tambahan - /, '');
+        additionalSlides.push({ title: label, note: additionalNotes[folder.id] || '', photos });
+      }
+      data.additionalSlides = additionalSlides;
+      log(`✅ ${additionalSlides.length} slide additional siap ditambahkan.`, 'ok');
     }
 
     log('Menyusun file PPTX (slide 2,4,5,6,7)...');
